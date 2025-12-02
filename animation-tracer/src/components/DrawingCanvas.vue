@@ -890,7 +890,6 @@ defineExpose({
   background: transparent;
   overflow: hidden;
 }
-}
 
 .drawing-canvas-container canvas {
   image-rendering: pixelated;

@@ -1,6 +1,35 @@
 <template>
   <div class="settings-panel">
     <div class="panel-section">
+      <h3>Display</h3>
+      
+      <label class="setting-toggle">
+        <input type="checkbox" :checked="settingsStore.resizableSidebars" @change="toggleResizableSidebars" />
+        <span>Resizable Sidebars</span>
+      </label>
+      <p class="setting-hint">
+        When enabled, drag the edge of either sidebar to resize. The UI elements will scale with the sidebar width.
+      </p>
+      
+      <div class="scale-selector">
+        <label class="scale-label">UI Scale</label>
+        <div class="scale-buttons">
+          <button
+            v-for="scale in settingsStore.uiScaleOptions"
+            :key="scale"
+            :class="{ active: settingsStore.uiScale === scale }"
+            @click="settingsStore.setUiScale(scale)"
+          >
+            {{ scale === 1 ? '1×' : scale + '×' }}
+          </button>
+        </div>
+      </div>
+      <p class="setting-hint">
+        Adjust the overall size of text and UI elements throughout the app.
+      </p>
+    </div>
+
+    <div class="panel-section">
       <h3>Tool Mode</h3>
       
       <label class="setting-toggle">
@@ -104,6 +133,11 @@ const settingsStore = useSettingsStore()
 function toggleArtistControls(e: Event) {
   const checked = (e.target as HTMLInputElement).checked
   settingsStore.setArtistControls(checked)
+}
+
+function toggleResizableSidebars(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  settingsStore.setResizableSidebars(checked)
 }
 
 function toggleSmoothLine(e: Event) {
@@ -233,6 +267,43 @@ onUnmounted(() => {
   color: #aaa;
   cursor: pointer;
   margin-bottom: 8px;
+}
+
+.scale-selector {
+  margin: 12px 0 8px 0;
+}
+
+.scale-label {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.scale-buttons {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.scale-buttons button {
+  padding: 5px 10px;
+  background: #252525;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #888;
+  min-width: 42px;
+  transition: all 0.15s;
+}
+
+.scale-buttons button:hover {
+  background: #333;
+  color: #fff;
+}
+
+.scale-buttons button.active {
+  background: var(--accent, #e85d04);
+  color: #fff;
 }
 
 .setting-toggle input {

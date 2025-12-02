@@ -1,5 +1,5 @@
 <template>
-  <div class="app">
+  <div class="app" :style="{ '--ui-scale': settingsStore.uiScale }">
     <header class="app-header">
       <div class="logo">FrameForge</div>
       <nav class="header-nav" v-if="videoStore.hasVideo">
@@ -46,11 +46,24 @@
     </div>
 
     <main class="app-main">
-      <aside class="sidebar-left">
-        <ToolPalette
-          @undo="drawingCanvas?.undo()"
-          @redo="drawingCanvas?.redo()"
-          @clear="drawingCanvas?.clearCanvas()"
+      <aside 
+        class="sidebar-left" 
+        :style="{ 
+          width: `${settingsStore.leftSidebarWidth}px`,
+          '--sidebar-scale': sidebarScale
+        }"
+      >
+        <div class="sidebar-content">
+          <ToolPalette
+            @undo="drawingCanvas?.undo()"
+            @redo="drawingCanvas?.redo()"
+            @clear="drawingCanvas?.clearCanvas()"
+          />
+        </div>
+        <div 
+          v-if="settingsStore.resizableSidebars"
+          class="resize-handle resize-handle-right"
+          @mousedown="startResizeLeft"
         />
       </aside>
 
@@ -78,7 +91,18 @@
         </div>
       </div>
 
-      <aside class="sidebar-right">
+      <aside 
+        class="sidebar-right"
+        :style="{ 
+          width: `${settingsStore.rightSidebarWidth}px`,
+          '--sidebar-scale': sidebarScaleRight
+        }"
+      >
+        <div 
+          v-if="settingsStore.resizableSidebars"
+          class="resize-handle resize-handle-left"
+          @mousedown="startResizeRight"
+        />
         <div class="sidebar-tabs">
           <button 
             :class="{ active: activeTab === 'export' }" 
@@ -89,8 +113,10 @@
             @click="activeTab = 'settings'"
           >Settings</button>
         </div>
-        <ExportPanel v-show="activeTab === 'export'" />
-        <SettingsPanel v-show="activeTab === 'settings'" />
+        <div class="sidebar-content">
+          <ExportPanel v-show="activeTab === 'export'" />
+          <SettingsPanel v-show="activeTab === 'settings'" />
+        </div>
       </aside>
     </main>
 
@@ -101,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import VideoPlayer from './components/VideoPlayer.vue'
 import DrawingCanvas from './components/DrawingCanvas.vue'
 import ToolPalette from './components/ToolPalette.vue'
@@ -123,6 +149,70 @@ const showVideo = ref(true)
 const videoOpacity = ref(50)
 const showCropPanel = ref(false)
 const activeTab = ref<'export' | 'settings'>('export')
+
+// Sidebar scale based on width, combined with UI scale
+// Scale increases gradually as width increases (no max limit)
+// Minimum scale of 0.9 ensures legibility
+const sidebarScale = computed(() => {
+  const baseWidth = 220 // Reference width for 1.0 scale
+  const widthScale = settingsStore.leftSidebarWidth / baseWidth
+  // Clamp between 0.9 and unlimited, then apply UI scale
+  return Math.max(0.9, widthScale) * settingsStore.uiScale
+})
+
+const sidebarScaleRight = computed(() => {
+  const baseWidth = 260 // Reference width for 1.0 scale
+  const widthScale = settingsStore.rightSidebarWidth / baseWidth
+  // Clamp between 0.9 and unlimited, then apply UI scale
+  return Math.max(0.9, widthScale) * settingsStore.uiScale
+})
+
+// Sidebar resizing
+let isResizingLeft = false
+let isResizingRight = false
+let resizeStartX = 0
+let resizeStartWidth = 0
+
+function startResizeLeft(e: MouseEvent) {
+  if (!settingsStore.resizableSidebars) return
+  isResizingLeft = true
+  resizeStartX = e.clientX
+  resizeStartWidth = settingsStore.leftSidebarWidth
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
+  document.body.style.cursor = 'ew-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function startResizeRight(e: MouseEvent) {
+  if (!settingsStore.resizableSidebars) return
+  isResizingRight = true
+  resizeStartX = e.clientX
+  resizeStartWidth = settingsStore.rightSidebarWidth
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
+  document.body.style.cursor = 'ew-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function handleResize(e: MouseEvent) {
+  if (isResizingLeft) {
+    const delta = e.clientX - resizeStartX
+    settingsStore.setLeftSidebarWidth(resizeStartWidth + delta)
+  } else if (isResizingRight) {
+    const delta = resizeStartX - e.clientX
+    settingsStore.setRightSidebarWidth(resizeStartWidth + delta)
+  }
+}
+
+function stopResize() {
+  isResizingLeft = false
+  isResizingRight = false
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+}
 
 function updateCrop(side: 'top' | 'bottom' | 'left' | 'right', event: Event) {
   const value = parseInt((event.target as HTMLInputElement).value)
@@ -210,11 +300,12 @@ onUnmounted(() => {
   height: 100vh;
   overflow: hidden;
   background: #181818;
+  font-size: max(11px, calc(14px * var(--ui-scale, 1)));
 }
 
 .app-header {
-  padding: 0 16px;
-  height: 42px;
+  padding: 0 calc(16px * var(--ui-scale, 1));
+  height: calc(42px * var(--ui-scale, 1));
   background: #0d0d0d;
   display: flex;
   align-items: center;
@@ -224,7 +315,7 @@ onUnmounted(() => {
 
 .logo {
   font-weight: 700;
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-scale, 1));
   letter-spacing: -0.5px;
   color: #fff;
 }
@@ -232,20 +323,21 @@ onUnmounted(() => {
 .header-nav {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: calc(16px * var(--ui-scale, 1));
 }
 
 .toggle-ref {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: calc(6px * var(--ui-scale, 1));
+  font-size: calc(12px * var(--ui-scale, 1));
   color: #aaa;
   cursor: pointer;
 }
 
 .toggle-ref input {
   accent-color: var(--accent);
+  transform: scale(var(--ui-scale, 1));
 }
 
 .opacity-slider {
@@ -268,26 +360,64 @@ onUnmounted(() => {
 }
 
 .sidebar-left {
-  width: 172px;
   flex-shrink: 0;
   background: #1a1a1a;
   border-right: 1px solid #2a2a2a;
   overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-right {
-  width: 200px;
   flex-shrink: 0;
   background: #1a1a1a;
   border-left: 1px solid #2a2a2a;
   display: flex;
   flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transform: scale(var(--sidebar-scale, 1));
+  transform-origin: top left;
+  width: calc(100% / var(--sidebar-scale, 1));
+  height: calc(100% / var(--sidebar-scale, 1));
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 10;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover {
+  background: var(--accent, #e85d04);
+}
+
+.resize-handle-right {
+  right: -3px;
+}
+
+.resize-handle-left {
+  left: -3px;
 }
 
 .sidebar-tabs {
   display: flex;
   border-bottom: 1px solid #2a2a2a;
   flex-shrink: 0;
+  transform: scale(var(--sidebar-scale, 1));
+  transform-origin: top left;
+  width: calc(100% / var(--sidebar-scale, 1));
 }
 
 .sidebar-tabs button {

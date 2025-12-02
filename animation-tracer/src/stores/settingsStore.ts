@@ -19,6 +19,16 @@ export const useSettingsStore = defineStore('settings', () => {
   const smoothLineMode = ref(false)
   const smoothLineStrength = ref(50) // 0-100 range
   
+  // Resizable sidebars
+  const resizableSidebars = ref(true)
+  const leftSidebarWidth = ref(220) // Default larger baseline
+  const rightSidebarWidth = ref(260) // Default larger baseline
+  const minSidebarWidth = 150
+  
+  // UI Scale (affects text and UI elements)
+  const uiScale = ref(1.0)
+  const uiScaleOptions = [0.85, 1.0, 1.25, 1.5, 1.75, 2.0]
+  
   function setArtistControls(enabled: boolean) {
     artistControls.value = enabled
   }
@@ -29,6 +39,22 @@ export const useSettingsStore = defineStore('settings', () => {
   
   function setSmoothLineStrength(strength: number) {
     smoothLineStrength.value = Math.max(0, Math.min(100, strength))
+  }
+  
+  function setResizableSidebars(enabled: boolean) {
+    resizableSidebars.value = enabled
+  }
+  
+  function setLeftSidebarWidth(width: number) {
+    leftSidebarWidth.value = Math.max(minSidebarWidth, width)
+  }
+  
+  function setRightSidebarWidth(width: number) {
+    rightSidebarWidth.value = Math.max(minSidebarWidth, width)
+  }
+  
+  function setUiScale(scale: number) {
+    uiScale.value = scale
   }
   
   // Key mappings for tools and actions
@@ -128,12 +154,22 @@ export const useSettingsStore = defineStore('settings', () => {
     artistControls,
     smoothLineMode,
     smoothLineStrength,
+    resizableSidebars,
+    leftSidebarWidth,
+    rightSidebarWidth,
+    minSidebarWidth,
+    uiScale,
+    uiScaleOptions,
     keyMappings,
     remappingAction,
     setRemapMode,
     setArtistControls,
     setSmoothLineMode,
     setSmoothLineStrength,
+    setResizableSidebars,
+    setLeftSidebarWidth,
+    setRightSidebarWidth,
+    setUiScale,
     startRemapping,
     cancelRemapping,
     setKeyMapping,
