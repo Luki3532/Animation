@@ -15,4 +15,4 @@ export interface VideoState {
   cropLeft: number
 }
 
-export type PreviewBackground = 'transparent' | 'white' | 'black'
+export type PreviewBackground = 'transparent' | 'white' | 'black' | 'gray' | 'custom'

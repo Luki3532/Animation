@@ -5,7 +5,7 @@ export interface FrameDrawing {
 }
 
 export interface ToolSettings {
-  tool: 'pen' | 'eraser' | 'rectangle' | 'circle' | 'line' | 'select'
+  tool: 'pen' | 'eraser' | 'rectangle' | 'circle' | 'line' | 'select' | 'pencil' | 'brush' | 'spray' | 'fill' | 'eyedropper' | 'marquee' | 'lasso' | 'contour' | 'polygon' | 'curve'
   color: string
   brushSize: number
   opacity: number

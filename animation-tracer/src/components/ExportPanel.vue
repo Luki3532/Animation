@@ -4,7 +4,7 @@
     <div class="panel-section" v-if="drawingStore.hasDrawings">
       <h3>Animation Preview</h3>
       <div class="animation-preview">
-        <div class="preview-canvas-container" :class="previewBgClass">
+        <div class="preview-canvas-container" :class="previewBgClass" :style="previewBgStyle">
           <img 
             v-if="croppedFrameUrl" 
             :src="croppedFrameUrl" 
@@ -15,7 +15,8 @@
         </div>
         <div class="preview-controls">
           <button @click="togglePlayback" class="play-button">
-            {{ isPlaying ? '⏸' : '▶' }}
+            <Pause v-if="isPlaying" :size="14" />
+            <Play v-else :size="14" />
           </button>
           <label class="fps-label">
             FPS:
@@ -33,20 +34,55 @@
         </div>
         <div class="bg-options">
           <button 
-            v-for="bg in bgOptions" 
-            :key="bg.value"
-            :class="{ active: previewBg === bg.value }"
-            @click="previewBg = bg.value"
-            :title="bg.label"
+            :class="{ active: previewBg === 'transparent' }"
+            @click="previewBg = 'transparent'"
+            title="Transparent"
           >
-            {{ bg.icon }}
+            <Grid3x3 :size="14" />
           </button>
+          <button 
+            :class="{ active: previewBg === 'white' }"
+            @click="previewBg = 'white'"
+            title="White"
+          >
+            <Square :size="14" />
+          </button>
+          <button 
+            :class="{ active: previewBg === 'black' }"
+            @click="previewBg = 'black'"
+            title="Black"
+            class="black-bg-btn"
+          >
+            <Square :size="14" fill="currentColor" />
+          </button>
+          <button 
+            :class="{ active: previewBg === 'gray' }"
+            @click="previewBg = 'gray'"
+            title="Gray"
+          >
+            <CircleDot :size="14" />
+          </button>
+          <button 
+            :class="{ active: previewBg === 'custom' }"
+            @click="previewBg = 'custom'"
+            title="Custom Color"
+          >
+            <Palette :size="14" />
+          </button>
+          <input 
+            v-if="previewBg === 'custom'"
+            type="color" 
+            v-model="customBgColor" 
+            class="bg-color-picker"
+            title="Pick background color"
+          />
         </div>
       </div>
     </div>
 
     <div class="panel-section">
-      <h3>Canvas Size</h3>
+      <h3>Export Size</h3>
+      <p class="size-hint">Frames will be scaled to this size when exported</p>
       <div class="size-options">
         <button
           v-for="size in CANVAS_SIZES"
@@ -100,13 +136,13 @@
           :disabled="!drawingStore.hasDrawings"
           class="primary"
         >
-          📦 Export Sprite Sheet
+          <Package :size="14" /> Export Sprite Sheet
         </button>
         <button
           @click="exportCurrentFrame"
           :disabled="!hasCurrentFrameDrawing"
         >
-          🖼 Export Current Frame
+          <ImageIcon :size="14" /> Export Current Frame
         </button>
       </div>
     </div>
@@ -127,6 +163,16 @@ import { useVideoStore } from '../stores/videoStore'
 import { ExportService } from '../services/exportService'
 import { CANVAS_SIZES } from '../types/drawing'
 import type { PreviewBackground } from '../types/video'
+import { 
+  Play, 
+  Pause, 
+  Grid3x3, 
+  Square, 
+  CircleDot,
+  Palette,
+  Package,
+  Image as ImageIcon
+} from 'lucide-vue-next'
 
 const drawingStore = useDrawingStore()
 const videoStore = useVideoStore()
@@ -144,14 +190,18 @@ const croppedFrameUrl = ref<string | null>(null)
 const previewBg = ref<PreviewBackground>('transparent')
 let playbackInterval: number | null = null
 
-// Background options
-const bgOptions = [
-  { value: 'transparent' as PreviewBackground, label: 'Transparent', icon: '▦' },
-  { value: 'white' as PreviewBackground, label: 'White', icon: '◻' },
-  { value: 'black' as PreviewBackground, label: 'Black', icon: '◼' }
-]
+// Custom background color
+const customBgColor = ref('#808080')
 
 const previewBgClass = computed(() => `bg-${previewBg.value}`)
+
+// Get the actual background style
+const previewBgStyle = computed(() => {
+  if (previewBg.value === 'custom') {
+    return { backgroundColor: customBgColor.value }
+  }
+  return {}
+})
 
 // Crop transparent pixels from image
 async function getCroppedFrame(thumbnailUrl: string): Promise<string> {
@@ -352,6 +402,12 @@ async function exportCurrentFrame() {
   font-weight: 500;
 }
 
+.size-hint {
+  font-size: 10px;
+  color: #666;
+  margin: 0 0 8px 0;
+}
+
 .size-options {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -448,6 +504,9 @@ async function exportCurrentFrame() {
   font-size: 11px;
   text-align: left;
   color: #888;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .export-buttons button:hover:not(:disabled) {
@@ -513,6 +572,69 @@ async function exportCurrentFrame() {
   justify-content: center;
   min-height: 80px;
   aspect-ratio: 1;
+}
+
+.preview-canvas-container.bg-white {
+  background: #ffffff;
+}
+
+.preview-canvas-container.bg-black {
+  background: #000000;
+}
+
+.preview-canvas-container.bg-gray {
+  background: #808080;
+}
+
+.preview-canvas-container.bg-custom {
+  background: none;
+}
+
+.bg-options {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.bg-options button {
+  width: 24px;
+  height: 24px;
+  background: #252525;
+  border-radius: 3px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+}
+
+.bg-options button:hover {
+  background: #333;
+  color: #fff;
+}
+
+.bg-options button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.bg-color-picker {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #333;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+}
+
+.bg-color-picker::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.bg-color-picker::-webkit-color-swatch {
+  border-radius: 2px;
+  border: none;
 }
 
 .preview-frame {

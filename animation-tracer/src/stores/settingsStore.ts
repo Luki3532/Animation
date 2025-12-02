@@ -12,6 +12,25 @@ export const useSettingsStore = defineStore('settings', () => {
   // Remap mode toggle
   const remapMode = ref(false)
   
+  // Artist controls mode (Aseprite-style tools)
+  const artistControls = ref(false)
+  
+  // Smooth line mode - line stabilization
+  const smoothLineMode = ref(false)
+  const smoothLineStrength = ref(50) // 0-100 range
+  
+  function setArtistControls(enabled: boolean) {
+    artistControls.value = enabled
+  }
+  
+  function setSmoothLineMode(enabled: boolean) {
+    smoothLineMode.value = enabled
+  }
+  
+  function setSmoothLineStrength(strength: number) {
+    smoothLineStrength.value = Math.max(0, Math.min(100, strength))
+  }
+  
   // Key mappings for tools and actions
   const keyMappings = reactive<KeyMapping[]>([
     { action: 'pen', label: 'Pen Tool', key: 'p', mouseButton: null },
@@ -106,9 +125,15 @@ export const useSettingsStore = defineStore('settings', () => {
   
   return {
     remapMode,
+    artistControls,
+    smoothLineMode,
+    smoothLineStrength,
     keyMappings,
     remappingAction,
     setRemapMode,
+    setArtistControls,
+    setSmoothLineMode,
+    setSmoothLineStrength,
     startRemapping,
     cancelRemapping,
     setKeyMapping,

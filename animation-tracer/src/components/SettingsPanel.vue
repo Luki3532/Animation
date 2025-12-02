@@ -1,14 +1,57 @@
 <template>
   <div class="settings-panel">
     <div class="panel-section">
+      <h3>Tool Mode</h3>
+      
+      <label class="setting-toggle">
+        <input type="checkbox" :checked="settingsStore.artistControls" @change="toggleArtistControls" />
+        <span>Artist Controls</span>
+      </label>
+      <p class="setting-hint">
+        Enable Aseprite-style tools: Pencil, Brush, Spray, Eyedropper, Paint Bucket, Curve, Contour, Polygon, Marquee, Lasso, and more.
+      </p>
+    </div>
+
+    <div class="panel-section">
+      <h3>Line Smoothing</h3>
+      
+      <label class="setting-toggle">
+        <input type="checkbox" :checked="settingsStore.smoothLineMode" @change="toggleSmoothLine" />
+        <span>Smooth Line Mode</span>
+      </label>
+      <p class="setting-hint">
+        Smooths brush strokes after drawing. Reduces jagged edges and hand shake without shifting the line position.
+      </p>
+      
+      <div class="slider-group" :class="{ disabled: !settingsStore.smoothLineMode }">
+        <label class="slider-label">
+          <span>Strength</span>
+          <span class="slider-value">{{ settingsStore.smoothLineStrength }}%</span>
+        </label>
+        <input 
+          type="range" 
+          min="0" 
+          max="100" 
+          :value="settingsStore.smoothLineStrength" 
+          @input="updateSmoothStrength"
+          :disabled="!settingsStore.smoothLineMode"
+        />
+        <div class="slider-hints">
+          <span>Responsive</span>
+          <span>Smooth</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
       <h3>Key Mapping</h3>
       
-      <label class="remap-toggle">
+      <label class="setting-toggle">
         <input type="checkbox" :checked="settingsStore.remapMode" @change="toggleRemapMode" />
         <span>Remap Mode</span>
       </label>
       
-      <p class="remap-hint" v-if="settingsStore.remapMode">
+      <p class="setting-hint" v-if="settingsStore.remapMode">
         Click any action below, then press a key or mouse/pen button to assign it.
       </p>
       
@@ -57,6 +100,21 @@ import { onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settingsStore'
 
 const settingsStore = useSettingsStore()
+
+function toggleArtistControls(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  settingsStore.setArtistControls(checked)
+}
+
+function toggleSmoothLine(e: Event) {
+  const checked = (e.target as HTMLInputElement).checked
+  settingsStore.setSmoothLineMode(checked)
+}
+
+function updateSmoothStrength(e: Event) {
+  const value = parseInt((e.target as HTMLInputElement).value)
+  settingsStore.setSmoothLineStrength(value)
+}
 
 function toggleRemapMode(e: Event) {
   const checked = (e.target as HTMLInputElement).checked
@@ -167,7 +225,7 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
-.remap-toggle {
+.setting-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -177,11 +235,11 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
-.remap-toggle input {
+.setting-toggle input {
   accent-color: var(--accent, #e85d04);
 }
 
-.remap-hint {
+.setting-hint {
   font-size: 10px;
   color: #666;
   margin: 0 0 10px 0;
@@ -284,5 +342,64 @@ onUnmounted(() => {
 .reset-btn:hover {
   background: #333;
   color: #fff;
+}
+
+.slider-group {
+  margin-top: 8px;
+}
+
+.slider-group.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.slider-value {
+  color: var(--accent, #e85d04);
+  font-weight: 500;
+}
+
+.slider-group input[type="range"] {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #333;
+  border-radius: 2px;
+  outline: none;
+}
+
+.slider-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent, #e85d04);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.slider-group input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent, #e85d04);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.slider-hints {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #555;
+  margin-top: 2px;
 }
 </style>

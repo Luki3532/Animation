@@ -1,0 +1,8 @@
+Pen:
+<script setup>
+import { LineSquiggle } from 'lucide-vue-next';
+</script>
+
+<template>
+  <LineSquiggle />
+</template>

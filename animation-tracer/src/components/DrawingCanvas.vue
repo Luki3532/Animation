@@ -6,12 +6,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Canvas, PencilBrush, Circle, Rect, Line, FabricObject } from 'fabric'
+import { Canvas, PencilBrush, SprayBrush, Circle, Rect, Line, Polygon, Path, FabricObject } from 'fabric'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useVideoStore } from '../stores/videoStore'
+import { useSettingsStore } from '../stores/settingsStore'
 
 const drawingStore = useDrawingStore()
 const videoStore = useVideoStore()
+const settingsStore = useSettingsStore()
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -23,6 +25,16 @@ let shapeStartX = 0
 let shapeStartY = 0
 let activeShape: FabricObject | null = null
 
+// Curve/Polygon/Contour state
+let polygonPoints: { x: number; y: number }[] = []
+let curveControlPoint: { x: number; y: number } | null = null
+let isDrawingCurve = false
+
+// Lasso state
+let lassoPoints: { x: number; y: number }[] = []
+let isDrawingLasso = false
+let resizeObserver: ResizeObserver | null = null
+
 const emit = defineEmits<{
   drawingUpdated: []
 }>()
@@ -31,11 +43,22 @@ onMounted(async () => {
   await nextTick()
   initCanvas()
   setupKeyboardShortcuts()
+  
+  // Watch for container resize
+  if (containerRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      scaleCanvasToFit()
+    })
+    resizeObserver.observe(containerRef.value)
+  }
 })
 
 onUnmounted(() => {
   if (fabricCanvas) {
     fabricCanvas.dispose()
+  }
+  if (resizeObserver) {
+    resizeObserver.disconnect()
   }
   window.removeEventListener('keydown', handleKeydown)
 })
@@ -52,16 +75,60 @@ function initCanvas() {
     height,
     backgroundColor: 'transparent',
     isDrawingMode: true,
+    selection: false, // Disable group selection
+    renderOnAddRemove: true,
   })
 
-  // Set up the brush
+  // Create custom brush that doesn't shift paths
   const brush = new PencilBrush(fabricCanvas)
   brush.color = drawingStore.toolSettings.color
   brush.width = drawingStore.toolSettings.brushSize
+  ;(brush as any).decimate = 0 // Prevent point reduction
+  
+  // Override the _finalizeAndAddPath to prevent path repositioning
+  const originalFinalize = (brush as any)._finalizeAndAddPath.bind(brush)
+  ;(brush as any)._finalizeAndAddPath = function() {
+    // Store points before finalization
+    const points = this._points ? [...this._points] : []
+    
+    // Call original but we'll fix the result
+    originalFinalize()
+    
+    // The path was just added, get it and fix positioning
+    const objects = fabricCanvas!.getObjects()
+    const lastPath = objects[objects.length - 1]
+    
+    if (lastPath && lastPath.type === 'path') {
+      // Keep path at origin - don't let Fabric move it
+      lastPath.set({
+        originX: 'left',
+        originY: 'top',
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      })
+    }
+  }
+  
   fabricCanvas.freeDrawingBrush = brush
 
   // Listen for drawing events
-  fabricCanvas.on('path:created', () => {
+  fabricCanvas.on('path:created', (e: any) => {
+    if (e.path) {
+      // Ensure selection is disabled
+      e.path.set({
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      })
+      
+      // Apply smoothing AFTER path is created (if enabled)
+      if (settingsStore.smoothLineMode && settingsStore.smoothLineStrength > 0) {
+        smoothPath(e.path)
+      }
+    }
     saveCurrentState()
   })
 
@@ -88,28 +155,180 @@ function scaleCanvasToFit() {
   const canvasWidth = videoStore.state.width || drawingStore.canvasSize.width
   const canvasHeight = videoStore.state.height || drawingStore.canvasSize.height
 
-  // Match the video scaling
-  const scaleX = container.clientWidth / canvasWidth
-  const scaleY = container.clientHeight / canvasHeight
-  const scale = Math.min(scaleX, scaleY)
+  // Try to find the video frame canvas to match its exact position
+  const videoFrameCanvas = document.querySelector('.frame-canvas') as HTMLCanvasElement
+  
+  if (videoFrameCanvas && videoStore.hasVideo) {
+    // Match the video canvas position exactly
+    const videoRect = videoFrameCanvas.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+    
+    const offsetX = videoRect.left - containerRect.left
+    const offsetY = videoRect.top - containerRect.top
+    const scale = videoRect.width / canvasWidth
+    
+    const wrapper = fabricCanvas.getElement().parentElement
+    if (wrapper) {
+      wrapper.style.position = 'absolute'
+      wrapper.style.left = `${offsetX}px`
+      wrapper.style.top = `${offsetY}px`
+      wrapper.style.transform = `scale(${scale})`
+      wrapper.style.transformOrigin = 'top left'
+      wrapper.style.width = `${canvasWidth}px`
+      wrapper.style.height = `${canvasHeight}px`
+    }
+  } else {
+    // No video - use standard centering
+    const scaleX = container.clientWidth / canvasWidth
+    const scaleY = container.clientHeight / canvasHeight
+    const scale = Math.min(scaleX, scaleY)
 
-  const canvasEl = fabricCanvas.getElement() as HTMLCanvasElement
-  canvasEl.style.width = `${canvasWidth * scale}px`
-  canvasEl.style.height = `${canvasHeight * scale}px`
+    const scaledWidth = canvasWidth * scale
+    const scaledHeight = canvasHeight * scale
+    
+    const offsetX = (container.clientWidth - scaledWidth) / 2
+    const offsetY = (container.clientHeight - scaledHeight) / 2
+
+    const wrapper = fabricCanvas.getElement().parentElement
+    if (wrapper) {
+      wrapper.style.position = 'absolute'
+      wrapper.style.left = `${offsetX}px`
+      wrapper.style.top = `${offsetY}px`
+      wrapper.style.transform = `scale(${scale})`
+      wrapper.style.transformOrigin = 'top left'
+      wrapper.style.width = `${canvasWidth}px`
+      wrapper.style.height = `${canvasHeight}px`
+    }
+  }
 }
 
 function onMouseDown(opt: any) {
   const tool = drawingStore.toolSettings.tool
-  if (!['rectangle', 'circle', 'line'].includes(tool)) return
   if (!fabricCanvas) return
-
-  isDrawingShape = true
+  
   const pointer = fabricCanvas.getScenePoint(opt.e)
-  shapeStartX = pointer.x
-  shapeStartY = pointer.y
-
   const color = drawingStore.toolSettings.color
   const strokeWidth = drawingStore.toolSettings.brushSize
+
+  // Eyedropper tool - pick color from canvas
+  if (tool === 'eyedropper') {
+    pickColor(opt.e)
+    return
+  }
+
+  // Fill tool - flood fill area
+  if (tool === 'fill') {
+    // Simple fill - add a rectangle behind at click point
+    // (True flood fill would require pixel manipulation)
+    const fillRect = new Rect({
+      left: 0,
+      top: 0,
+      width: fabricCanvas.width,
+      height: fabricCanvas.height,
+      fill: color,
+      selectable: false,
+    })
+    fabricCanvas.insertAt(0, fillRect)
+    saveCurrentState()
+    return
+  }
+
+  // Polygon tool - click to add points, double-click to finish
+  if (tool === 'polygon') {
+    if (opt.e.detail === 2) {
+      // Double-click: finish polygon
+      finishPolygon()
+    } else {
+      polygonPoints.push({ x: pointer.x, y: pointer.y })
+      renderPolygonPreview()
+    }
+    return
+  }
+
+  // Contour tool - freehand closed shape
+  if (tool === 'contour') {
+    isDrawingLasso = true
+    lassoPoints = [{ x: pointer.x, y: pointer.y }]
+    return
+  }
+
+  // Lasso selection tool
+  if (tool === 'lasso') {
+    isDrawingLasso = true
+    lassoPoints = [{ x: pointer.x, y: pointer.y }]
+    return
+  }
+
+  // Marquee selection tool
+  if (tool === 'marquee') {
+    isDrawingShape = true
+    shapeStartX = pointer.x
+    shapeStartY = pointer.y
+    activeShape = new Rect({
+      left: shapeStartX,
+      top: shapeStartY,
+      width: 0,
+      height: 0,
+      fill: 'rgba(0, 120, 255, 0.2)',
+      stroke: '#0078ff',
+      strokeWidth: 1,
+      strokeDashArray: [5, 5],
+      selectable: false,
+    })
+    fabricCanvas.add(activeShape)
+    return
+  }
+
+  // Curve tool - start drawing curve
+  if (tool === 'curve') {
+    if (!isDrawingCurve) {
+      isDrawingCurve = true
+      shapeStartX = pointer.x
+      shapeStartY = pointer.y
+      activeShape = new Line([shapeStartX, shapeStartY, shapeStartX, shapeStartY], {
+        stroke: color,
+        strokeWidth,
+        selectable: false,
+        evented: false,
+        hasControls: false,
+        hasBorders: false,
+      })
+      fabricCanvas.add(activeShape)
+    } else if (!curveControlPoint) {
+      // Second click: set end point, wait for control point
+      curveControlPoint = { x: pointer.x, y: pointer.y }
+    } else {
+      // Third click: add control point and create curve
+      const path = new Path(
+        `M ${shapeStartX} ${shapeStartY} Q ${pointer.x} ${pointer.y} ${curveControlPoint.x} ${curveControlPoint.y}`,
+        {
+          fill: 'transparent',
+          stroke: color,
+          strokeWidth,
+          selectable: false,
+          evented: false,
+          hasControls: false,
+          hasBorders: false,
+        }
+      )
+      if (activeShape) {
+        fabricCanvas.remove(activeShape)
+      }
+      fabricCanvas.add(path)
+      isDrawingCurve = false
+      curveControlPoint = null
+      activeShape = null
+      saveCurrentState()
+    }
+    return
+  }
+
+  // Shape tools
+  if (!['rectangle', 'circle', 'line'].includes(tool)) return
+
+  isDrawingShape = true
+  shapeStartX = pointer.x
+  shapeStartY = pointer.y
 
   if (tool === 'rectangle') {
     activeShape = new Rect({
@@ -120,6 +339,10 @@ function onMouseDown(opt: any) {
       fill: 'transparent',
       stroke: color,
       strokeWidth,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
     })
   } else if (tool === 'circle') {
     activeShape = new Circle({
@@ -129,11 +352,19 @@ function onMouseDown(opt: any) {
       fill: 'transparent',
       stroke: color,
       strokeWidth,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
     })
   } else if (tool === 'line') {
     activeShape = new Line([shapeStartX, shapeStartY, shapeStartX, shapeStartY], {
       stroke: color,
       strokeWidth,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
     })
   }
 
@@ -143,12 +374,21 @@ function onMouseDown(opt: any) {
 }
 
 function onMouseMove(opt: any) {
-  if (!isDrawingShape || !activeShape || !fabricCanvas) return
-
+  if (!fabricCanvas) return
+  
   const pointer = fabricCanvas.getScenePoint(opt.e)
   const tool = drawingStore.toolSettings.tool
 
-  if (tool === 'rectangle') {
+  // Contour/Lasso - track points while drawing
+  if (isDrawingLasso && (tool === 'contour' || tool === 'lasso')) {
+    lassoPoints.push({ x: pointer.x, y: pointer.y })
+    renderLassoPreview()
+    return
+  }
+
+  if (!isDrawingShape || !activeShape) return
+
+  if (tool === 'rectangle' || tool === 'marquee') {
     const rect = activeShape as Rect
     const width = Math.abs(pointer.x - shapeStartX)
     const height = Math.abs(pointer.y - shapeStartY)
@@ -168,7 +408,7 @@ function onMouseMove(opt: any) {
       top: (shapeStartY + pointer.y) / 2 - radius,
       radius,
     })
-  } else if (tool === 'line') {
+  } else if (tool === 'line' || tool === 'curve') {
     const line = activeShape as Line
     line.set({
       x2: pointer.x,
@@ -180,11 +420,180 @@ function onMouseMove(opt: any) {
 }
 
 function onMouseUp() {
+  const tool = drawingStore.toolSettings.tool
+
+  // Finish contour drawing (closed freehand shape)
+  if (isDrawingLasso && tool === 'contour' && lassoPoints.length > 2) {
+    finishContour()
+    isDrawingLasso = false
+    lassoPoints = []
+    return
+  }
+
+  // Finish lasso selection
+  if (isDrawingLasso && tool === 'lasso') {
+    // For now, just draw the lasso outline
+    // In a full implementation, this would create a selection
+    isDrawingLasso = false
+    lassoPoints = []
+    return
+  }
+
+  // Marquee selection - for now just remove the preview
+  if (isDrawingShape && tool === 'marquee' && activeShape) {
+    fabricCanvas?.remove(activeShape)
+    isDrawingShape = false
+    activeShape = null
+    return
+  }
+
   if (isDrawingShape && activeShape) {
     saveCurrentState()
   }
   isDrawingShape = false
   activeShape = null
+}
+
+// Helper functions for advanced tools
+function pickColor(e: MouseEvent) {
+  if (!fabricCanvas) return
+  
+  const canvas = fabricCanvas.getElement() as HTMLCanvasElement
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  const rect = canvas.getBoundingClientRect()
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+  
+  const pixel = ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data
+  
+  if (pixel[3] > 0) {
+    const color = `#${pixel[0].toString(16).padStart(2, '0')}${pixel[1].toString(16).padStart(2, '0')}${pixel[2].toString(16).padStart(2, '0')}`
+    drawingStore.setColor(color)
+  }
+}
+
+function renderPolygonPreview() {
+  if (!fabricCanvas || polygonPoints.length < 2) return
+  
+  // Remove existing preview
+  const objects = fabricCanvas.getObjects()
+  const preview = objects.find(o => (o as any)._isPolygonPreview)
+  if (preview) {
+    fabricCanvas.remove(preview)
+  }
+
+  // Draw preview lines
+  const pathData = polygonPoints.map((p, i) => 
+    `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
+  ).join(' ')
+  
+  const previewPath = new Path(pathData, {
+    fill: 'transparent',
+    stroke: drawingStore.toolSettings.color,
+    strokeWidth: drawingStore.toolSettings.brushSize,
+    strokeDashArray: [5, 5],
+    selectable: false,
+  })
+  ;(previewPath as any)._isPolygonPreview = true
+  
+  fabricCanvas.add(previewPath)
+  fabricCanvas.renderAll()
+}
+
+function finishPolygon() {
+  if (!fabricCanvas || polygonPoints.length < 3) {
+    polygonPoints = []
+    return
+  }
+
+  // Remove preview
+  const objects = fabricCanvas.getObjects()
+  const preview = objects.find(o => (o as any)._isPolygonPreview)
+  if (preview) {
+    fabricCanvas.remove(preview)
+  }
+
+  const polygon = new Polygon(
+    polygonPoints.map(p => ({ x: p.x, y: p.y })),
+    {
+      fill: 'transparent',
+      stroke: drawingStore.toolSettings.color,
+      strokeWidth: drawingStore.toolSettings.brushSize,
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
+    }
+  )
+  
+  fabricCanvas.add(polygon)
+  polygonPoints = []
+  saveCurrentState()
+}
+
+function renderLassoPreview() {
+  if (!fabricCanvas || lassoPoints.length < 2) return
+  
+  // Remove existing preview
+  const objects = fabricCanvas.getObjects()
+  const preview = objects.find(o => (o as any)._isLassoPreview)
+  if (preview) {
+    fabricCanvas.remove(preview)
+  }
+
+  const pathData = lassoPoints.map((p, i) => 
+    `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
+  ).join(' ')
+  
+  const previewPath = new Path(pathData, {
+    fill: 'transparent',
+    stroke: drawingStore.toolSettings.tool === 'contour' 
+      ? drawingStore.toolSettings.color 
+      : '#0078ff',
+    strokeWidth: drawingStore.toolSettings.tool === 'contour' 
+      ? drawingStore.toolSettings.brushSize 
+      : 1,
+    strokeDashArray: drawingStore.toolSettings.tool === 'lasso' ? [3, 3] : undefined,
+    selectable: false,
+  })
+  ;(previewPath as any)._isLassoPreview = true
+  
+  fabricCanvas.add(previewPath)
+  fabricCanvas.renderAll()
+}
+
+function finishContour() {
+  if (!fabricCanvas || lassoPoints.length < 3) return
+
+  // Remove preview
+  const objects = fabricCanvas.getObjects()
+  const preview = objects.find(o => (o as any)._isLassoPreview)
+  if (preview) {
+    fabricCanvas.remove(preview)
+  }
+
+  // Create closed path
+  const pathData = lassoPoints.map((p, i) => 
+    `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
+  ).join(' ') + ' Z'
+  
+  const contourPath = new Path(pathData, {
+    fill: 'transparent',
+    stroke: drawingStore.toolSettings.color,
+    strokeWidth: drawingStore.toolSettings.brushSize,
+    selectable: false,
+    evented: false,
+    hasControls: false,
+    hasBorders: false,
+  })
+  
+  fabricCanvas.add(contourPath)
+  saveCurrentState()
 }
 
 function saveCurrentState() {
@@ -215,34 +624,141 @@ function loadFrameDrawing() {
   }
 }
 
+// Smoothing state for real-time line stabilization
+let smoothingBuffer: { x: number; y: number }[] = []
+
+// Smooth a path after creation - preserves start/end points to prevent visual shifting
+function smoothPath(path: Path) {
+  if (!path.path || path.path.length < 4) return
+  
+  const strength = settingsStore.smoothLineStrength / 100
+  const pathData = path.path as any[]
+  
+  // Keep first and last points fixed to prevent shifting
+  const firstPoint = pathData[0]
+  const lastPoint = pathData[pathData.length - 1]
+  
+  // Apply moving average smoothing to middle points only
+  const windowSize = Math.max(2, Math.floor(strength * 5) + 1)
+  
+  for (let i = 1; i < pathData.length - 1; i++) {
+    const cmd = pathData[i]
+    if (cmd[0] === 'Q' || cmd[0] === 'L') {
+      // Average with neighboring points
+      let sumX = 0, sumY = 0, count = 0
+      
+      for (let j = Math.max(1, i - windowSize); j <= Math.min(pathData.length - 2, i + windowSize); j++) {
+        const neighbor = pathData[j]
+        if (neighbor[0] === 'Q') {
+          sumX += neighbor[3] // end x
+          sumY += neighbor[4] // end y
+          count++
+        } else if (neighbor[0] === 'L') {
+          sumX += neighbor[1]
+          sumY += neighbor[2]
+          count++
+        }
+      }
+      
+      if (count > 0) {
+        const avgX = sumX / count
+        const avgY = sumY / count
+        
+        // Blend original with average based on strength
+        if (cmd[0] === 'Q') {
+          cmd[3] = cmd[3] * (1 - strength * 0.5) + avgX * strength * 0.5
+          cmd[4] = cmd[4] * (1 - strength * 0.5) + avgY * strength * 0.5
+        } else if (cmd[0] === 'L') {
+          cmd[1] = cmd[1] * (1 - strength * 0.5) + avgX * strength * 0.5
+          cmd[2] = cmd[2] * (1 - strength * 0.5) + avgY * strength * 0.5
+        }
+      }
+    }
+  }
+  
+  // Restore first and last points to prevent any shifting
+  pathData[0] = firstPoint
+  pathData[pathData.length - 1] = lastPoint
+  
+  path.set('path', pathData)
+  fabricCanvas?.renderAll()
+}
+
+// Apply smooth line settings to brush - NO decimate to prevent line jumping
+function applyBrushSmoothing(brush: PencilBrush) {
+  // IMPORTANT: Set decimate to 0 to prevent line shifting on release
+  ;(brush as any).decimate = 0
+  ;(brush as any).strokeUniform = true
+}
+
 // Watch for tool changes
 watch(
   () => drawingStore.toolSettings,
   (settings) => {
     if (!fabricCanvas) return
 
-    if (settings.tool === 'pen') {
+    // Pencil tool - basic pixel-art style pencil
+    if (settings.tool === 'pen' || settings.tool === 'pencil') {
       fabricCanvas.isDrawingMode = true
-      const brush = fabricCanvas.freeDrawingBrush as PencilBrush
-      if (brush) {
-        brush.color = settings.color
-        brush.width = settings.brushSize
-      }
-    } else if (settings.tool === 'eraser') {
+      const brush = new PencilBrush(fabricCanvas)
+      brush.color = settings.color
+      brush.width = settings.brushSize
+      applyBrushSmoothing(brush)
+      fabricCanvas.freeDrawingBrush = brush
+    }
+    // Brush tool - smooth brush strokes
+    else if (settings.tool === 'brush') {
       fabricCanvas.isDrawingMode = true
-      const brush = fabricCanvas.freeDrawingBrush as PencilBrush
-      if (brush) {
-        brush.color = '#ffffff' // White eraser
-        brush.width = settings.brushSize * 2
-      }
-    } else if (settings.tool === 'select') {
+      const brush = new PencilBrush(fabricCanvas)
+      brush.color = settings.color
+      brush.width = settings.brushSize * 1.5 // Slightly larger
+      applyBrushSmoothing(brush)
+      fabricCanvas.freeDrawingBrush = brush
+    }
+    // Spray tool - airbrush effect
+    else if (settings.tool === 'spray') {
+      fabricCanvas.isDrawingMode = true
+      const brush = new SprayBrush(fabricCanvas)
+      brush.color = settings.color
+      brush.width = settings.brushSize * 3
+      ;(brush as any).density = 20
+      fabricCanvas.freeDrawingBrush = brush
+    }
+    // Eraser
+    else if (settings.tool === 'eraser') {
+      fabricCanvas.isDrawingMode = true
+      const brush = new PencilBrush(fabricCanvas)
+      brush.color = 'rgba(0,0,0,0)' // Transparent for true erasing
+      brush.width = settings.brushSize * 2
+      applyBrushSmoothing(brush)
+      // Use destination-out composite for true erasing
+      fabricCanvas.freeDrawingBrush = brush
+      // Note: True erasing requires custom implementation
+      // For now we use white which works on white backgrounds
+      brush.color = '#ffffff'
+    }
+    // Selection/Move tool
+    else if (settings.tool === 'select') {
       fabricCanvas.isDrawingMode = false
-    } else {
-      // Shape tools
+    }
+    // Tools that need canvas interaction (shapes, eyedropper, fill, etc.)
+    else {
       fabricCanvas.isDrawingMode = false
     }
   },
   { deep: true, immediate: true }
+)
+
+// Watch for smooth line settings changes
+watch(
+  () => [settingsStore.smoothLineMode, settingsStore.smoothLineStrength],
+  () => {
+    if (!fabricCanvas || !fabricCanvas.freeDrawingBrush) return
+    const brush = fabricCanvas.freeDrawingBrush
+    if (brush instanceof PencilBrush) {
+      applyBrushSmoothing(brush)
+    }
+  }
 )
 
 // Watch for frame changes
@@ -269,11 +785,17 @@ watch(
   }
 )
 
-// Watch for canvas size changes
+// Watch for canvas size changes (only when no video loaded)
 watch(
   () => drawingStore.canvasSize,
   async () => {
     if (!fabricCanvas) return
+    
+    // Only apply canvas size when no video is loaded
+    if (videoStore.state.width && videoStore.state.height) {
+      // Video is loaded - canvas matches video, size is for export only
+      return
+    }
 
     await nextTick()
     fabricCanvas.setDimensions({
@@ -365,14 +887,17 @@ defineExpose({
 .drawing-canvas-container {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: transparent;
   overflow: hidden;
+}
 }
 
 .drawing-canvas-container canvas {
   image-rendering: pixelated;
+}
+
+/* Fabric canvas wrapper - allow transform scaling */
+.drawing-canvas-container :deep(.canvas-container) {
+  position: relative !important;
 }
 </style>

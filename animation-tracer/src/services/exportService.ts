@@ -46,7 +46,7 @@ export class ExportService {
 
     const spriteFrames: SpriteSheetMetadata['frames'] = []
 
-    // Render each frame
+    // Render each frame (scaled to target canvas size)
     for (let i = 0; i < frames.length; i++) {
       const frame = frames[i]
       const col = i % cols
@@ -54,9 +54,11 @@ export class ExportService {
       const x = col * (frameWidth + padding)
       const y = row * (frameHeight + padding)
 
-      // Load frame image from thumbnail
+      // Load frame image from thumbnail and scale to target size
       const img = await this.loadImage(frame.thumbnail)
-      ctx.drawImage(img, x, y, frameWidth, frameHeight)
+      
+      // Draw scaled to target frame size (handles video frames at different resolution)
+      ctx.drawImage(img, 0, 0, img.width, img.height, x, y, frameWidth, frameHeight)
 
       spriteFrames.push({
         frameIndex: frame.frameIndex,

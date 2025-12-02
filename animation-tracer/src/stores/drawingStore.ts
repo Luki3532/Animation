@@ -18,6 +18,9 @@ export const useDrawingStore = defineStore('drawing', () => {
   // Canvas size
   const canvasSize = ref<CanvasSize>(CANVAS_SIZES[2]) // Default 128x128
   
+  // Hovered tool hint (for status bar)
+  const hoveredHint = ref<string>('')
+  
   // History for undo/redo
   const history = ref<string[]>([])
   const historyIndex = ref(-1)
@@ -67,6 +70,10 @@ export const useDrawingStore = defineStore('drawing', () => {
     canvasSize.value = size
   }
   
+  function setHoveredHint(hint: string) {
+    hoveredHint.value = hint
+  }
+  
   function pushHistory(state: string) {
     // Remove any redo states
     history.value = history.value.slice(0, historyIndex.value + 1)
@@ -105,6 +112,7 @@ export const useDrawingStore = defineStore('drawing', () => {
     frameDrawings,
     toolSettings,
     canvasSize,
+    hoveredHint,
     hasDrawings,
     drawnFrameIndices,
     saveFrameDrawing,
@@ -116,6 +124,7 @@ export const useDrawingStore = defineStore('drawing', () => {
     setBrushSize,
     setOpacity,
     setCanvasSize,
+    setHoveredHint,
     pushHistory,
     undo,
     redo,

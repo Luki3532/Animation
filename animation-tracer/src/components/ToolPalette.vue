@@ -8,7 +8,8 @@
           :key="tool.id"
           :class="{ active: drawingStore.toolSettings.tool === tool.id }"
           @click="drawingStore.setTool(tool.id)"
-          :title="tool.label"
+          @mouseenter="drawingStore.setHoveredHint(getTooltip(tool))"
+          @mouseleave="drawingStore.setHoveredHint('')"
         >
           <span v-html="tool.icon"></span>
         </button>
@@ -61,19 +62,36 @@
     <div class="tool-section">
       <h3>Actions</h3>
       <div class="action-buttons">
-        <button @click="emit('undo')" title="Undo (Ctrl+Z)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7.7L3 7"/></svg> Undo</button>
-        <button @click="emit('redo')" title="Redo (Ctrl+Y)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M21 13a9 9 0 1 1-3-7.7L21 7"/></svg> Redo</button>
-        <button @click="emit('clear')" class="danger" title="Clear Frame"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg> Clear</button>
+        <button 
+          @click="emit('undo')" 
+          @mouseenter="drawingStore.setHoveredHint('Undo last action (Ctrl+Z)')"
+          @mouseleave="drawingStore.setHoveredHint('')"
+        ><Undo2 :size="14" /> Undo</button>
+        <button 
+          @click="emit('redo')" 
+          @mouseenter="drawingStore.setHoveredHint('Redo last undone action (Ctrl+Y)')"
+          @mouseleave="drawingStore.setHoveredHint('')"
+        ><Redo2 :size="14" /> Redo</button>
+        <button 
+          @click="emit('clear')" 
+          class="danger"
+          @mouseenter="drawingStore.setHoveredHint('Clear all drawings on current frame')"
+          @mouseleave="drawingStore.setHoveredHint('')"
+        ><Trash2 :size="14" /> Clear</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { Undo2, Redo2, Trash2 } from 'lucide-vue-next'
 import { useDrawingStore } from '../stores/drawingStore'
+import { useSettingsStore } from '../stores/settingsStore'
 import type { ToolSettings } from '../types/drawing'
 
 const drawingStore = useDrawingStore()
+const settingsStore = useSettingsStore()
 
 const emit = defineEmits<{
   undo: []
@@ -83,18 +101,50 @@ const emit = defineEmits<{
 
 interface Tool {
   id: ToolSettings['tool']
-  label: string
+  name: string
+  hotkey: string
   icon: string
 }
 
-const tools: Tool[] = [
-  { id: 'pen', label: 'Pen (P)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>' },
-  { id: 'eraser', label: 'Eraser (E)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21h10"/><path d="M5.828 14.828L15.314 5.343a2 2 0 012.828 0l.707.707a2 2 0 010 2.828L9.364 18.364a2 2 0 01-2.828 0l-.707-.707a2 2 0 010-2.829z"/></svg>' },
-  { id: 'line', label: 'Line (L)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>' },
-  { id: 'rectangle', label: 'Rectangle (R)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>' },
-  { id: 'circle', label: 'Circle (C)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>' },
-  { id: 'select', label: 'Select (V)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>' },
+// Basic tools (default mode) - using Lucide icons (https://lucide.dev)
+const basicTools: Tool[] = [
+  { id: 'pen', name: 'Pen', hotkey: 'B', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>' },
+  { id: 'eraser', name: 'Eraser', hotkey: 'E', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>' },
+  { id: 'line', name: 'Line', hotkey: 'L', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5"/></svg>' },
+  { id: 'rectangle', name: 'Rectangle', hotkey: 'U', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>' },
+  { id: 'circle', name: 'Ellipse', hotkey: 'Shift+U', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>' },
+  { id: 'select', name: 'Move', hotkey: 'V', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/></svg>' },
 ]
+
+// Aseprite-style artist tools - using Lucide icons (https://lucide.dev)
+const artistTools: Tool[] = [
+  // Drawing tools
+  { id: 'pencil', name: 'Pencil', hotkey: 'B', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>' },
+  { id: 'brush', name: 'Brush', hotkey: 'B', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/></svg>' },
+  { id: 'spray', name: 'Spray', hotkey: 'Shift+B', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"/></svg>' },
+  { id: 'eraser', name: 'Eraser', hotkey: 'E', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>' },
+  { id: 'eyedropper', name: 'Eyedropper', hotkey: 'I', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg>' },
+  { id: 'fill', name: 'Paint Bucket', hotkey: 'G', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z"/><path d="m5 2 5 5"/><path d="M2 13h15"/><path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z"/></svg>' },
+  // Shape tools
+  { id: 'line', name: 'Line', hotkey: 'L', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19L19 5"/></svg>' },
+  { id: 'curve', name: 'Curve', hotkey: 'Shift+L', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c0-4 3.33-8 10-8s10 4 10 8-3.33 8-10 8-10-4-10-8Z"/><path d="M12 12v.01"/></svg>' },
+  { id: 'rectangle', name: 'Rectangle', hotkey: 'U', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>' },
+  { id: 'circle', name: 'Ellipse', hotkey: 'Shift+U', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>' },
+  { id: 'contour', name: 'Contour', hotkey: 'D', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c-4.97 0-9-2.24-9-5v-4"/><path d="M12 14c-4.97 0-9-2.24-9-5s4.03-5 9-5 9 2.24 9 5"/><path d="M21 9v4c0 2.76-4.03 5-9 5"/><path d="M12 9v.01"/></svg>' },
+  { id: 'polygon', name: 'Polygon', hotkey: 'Shift+D', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l9.5 5.5v9L12 22l-9.5-5.5v-9L12 2Z"/></svg>' },
+  // Selection tools
+  { id: 'marquee', name: 'Marquee', hotkey: 'M', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="0" stroke-dasharray="4 2"/></svg>' },
+  { id: 'lasso', name: 'Lasso', hotkey: 'Q', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 22a5 5 0 0 1-2-4"/><path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-3.2-.5"/><path d="M12 10a3 3 0 1 0 0 6"/></svg>' },
+  { id: 'select', name: 'Move', hotkey: 'V', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/></svg>' },
+]
+
+// Use either basic or artist tools based on setting
+const tools = computed(() => settingsStore.artistControls ? artistTools : basicTools)
+
+// Format tooltip text
+function getTooltip(tool: Tool): string {
+  return `${tool.name} (${tool.hotkey})`
+}
 
 const colorPresets = [
   '#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff',
@@ -124,22 +174,25 @@ function onOpacityChange(e: Event) {
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
+  overflow-x: hidden;
   height: 100%;
 }
 
 .tool-section h3 {
-  margin: 0 0 6px 0;
-  font-size: 10px;
+  margin: 0 0 8px 0;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #555;
-  font-weight: 500;
+  color: #666;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .tools-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 3px;
+  overflow: visible;
 }
 
 .tools-grid button {
@@ -151,6 +204,7 @@ function onOpacityChange(e: Event) {
   align-items: center;
   justify-content: center;
   color: #888;
+  position: relative;
 }
 
 .tools-grid button svg {
@@ -225,6 +279,10 @@ input[type="range"] {
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .action-buttons button svg {

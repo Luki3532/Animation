@@ -1,25 +1,49 @@
 <template>
   <div class="timeline" v-if="videoStore.hasVideo">
     <div class="timeline-controls">
-      <button @click="videoStore.previousFrame()" :disabled="videoStore.state.currentFrame === 0">
-        ◀
+      <button @click="videoStore.previousFrame()" :disabled="videoStore.state.currentFrame === 0" title="Previous frame">
+        <ChevronLeft :size="14" />
       </button>
       <span class="frame-info">
         Frame {{ videoStore.state.currentFrame + 1 }} / {{ videoStore.state.frameCount }}
       </span>
-      <button @click="videoStore.nextFrame()" :disabled="videoStore.state.currentFrame >= videoStore.state.frameCount - 1">
-        ▶
+      <button @click="videoStore.nextFrame()" :disabled="videoStore.state.currentFrame >= videoStore.state.frameCount - 1" title="Next frame">
+        <ChevronRight :size="14" />
+      </button>
+    </div>
+
+    <div class="keyframe-nav" v-if="drawingStore.drawnFrameIndices.length > 0">
+      <button @click="goToPrevKeyframe" :disabled="!hasPrevKeyframe" title="Previous keyframe">
+        <ChevronsLeft :size="14" />
+      </button>
+      <span class="keyframe-count">{{ drawingStore.drawnFrameIndices.length }} keyframe{{ drawingStore.drawnFrameIndices.length !== 1 ? 's' : '' }}</span>
+      <button @click="goToNextKeyframe" :disabled="!hasNextKeyframe" title="Next keyframe">
+        <ChevronsRight :size="14" />
       </button>
     </div>
 
     <div class="timeline-slider">
-      <input
-        type="range"
-        :min="0"
-        :max="videoStore.state.frameCount - 1"
-        :value="videoStore.state.currentFrame"
-        @input="onSliderChange"
-      />
+      <div class="slider-track">
+        <input
+          type="range"
+          :min="0"
+          :max="videoStore.state.frameCount - 1"
+          :value="videoStore.state.currentFrame"
+          @input="onSliderChange"
+        />
+        <!-- Keyframe markers on slider -->
+        <div class="keyframe-markers">
+          <div 
+            v-for="frameIndex in drawingStore.drawnFrameIndices"
+            :key="frameIndex"
+            class="keyframe-marker"
+            :class="{ active: frameIndex === videoStore.state.currentFrame }"
+            :style="{ left: `${(frameIndex / (videoStore.state.frameCount - 1)) * 100}%` }"
+            @click="videoStore.setCurrentFrame(frameIndex)"
+            :title="`Keyframe ${frameIndex + 1}`"
+          />
+        </div>
+      </div>
     </div>
 
     <div class="fps-control">
@@ -34,33 +58,44 @@
         />
       </label>
     </div>
-
-    <div class="drawn-frames">
-      <span class="drawn-label">Drawn frames:</span>
-      <div class="frame-indicators">
-        <span
-          v-for="frameIndex in drawingStore.drawnFrameIndices"
-          :key="frameIndex"
-          class="frame-indicator"
-          :class="{ active: frameIndex === videoStore.state.currentFrame }"
-          @click="videoStore.setCurrentFrame(frameIndex)"
-        >
-          {{ frameIndex + 1 }}
-        </span>
-        <span v-if="drawingStore.drawnFrameIndices.length === 0" class="no-frames">
-          None yet
-        </span>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
 
 const videoStore = useVideoStore()
 const drawingStore = useDrawingStore()
+
+// Keyframe navigation
+const hasPrevKeyframe = computed(() => {
+  const indices = drawingStore.drawnFrameIndices
+  return indices.some(i => i < videoStore.state.currentFrame)
+})
+
+const hasNextKeyframe = computed(() => {
+  const indices = drawingStore.drawnFrameIndices
+  return indices.some(i => i > videoStore.state.currentFrame)
+})
+
+function goToPrevKeyframe() {
+  const indices = drawingStore.drawnFrameIndices
+  const prevFrames = indices.filter(i => i < videoStore.state.currentFrame)
+  if (prevFrames.length > 0) {
+    videoStore.setCurrentFrame(prevFrames[prevFrames.length - 1])
+  }
+}
+
+function goToNextKeyframe() {
+  const indices = drawingStore.drawnFrameIndices
+  const nextFrame = indices.find(i => i > videoStore.state.currentFrame)
+  if (nextFrame !== undefined) {
+    videoStore.setCurrentFrame(nextFrame)
+  }
+}
 
 function onSliderChange(e: Event) {
   const input = e.target as HTMLInputElement
@@ -101,7 +136,6 @@ function onFpsChange(e: Event) {
   align-items: center;
   justify-content: center;
   color: #888;
-  font-size: 11px;
 }
 
 .timeline-controls button:disabled {
@@ -115,10 +149,48 @@ function onFpsChange(e: Event) {
 }
 
 .frame-info {
-  min-width: 90px;
+  min-width: 100px;
   text-align: center;
   color: #888;
   font-variant-numeric: tabular-nums;
+}
+
+.keyframe-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-left: 1px solid #333;
+  border-right: 1px solid #333;
+}
+
+.keyframe-nav button {
+  width: 24px;
+  height: 24px;
+  background: #252525;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.keyframe-nav button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  color: #666;
+}
+
+.keyframe-nav button:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+
+.keyframe-count {
+  color: var(--accent);
+  font-size: 11px;
+  min-width: 70px;
+  text-align: center;
 }
 
 .timeline-slider {
@@ -126,9 +198,50 @@ function onFpsChange(e: Event) {
   min-width: 150px;
 }
 
-.timeline-slider input[type="range"] {
+.slider-track {
+  position: relative;
+  padding: 8px 0;
+}
+
+.slider-track input[type="range"] {
   width: 100%;
   height: 4px;
+  position: relative;
+  z-index: 2;
+}
+
+.keyframe-markers {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 16px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.keyframe-marker {
+  position: absolute;
+  width: 4px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 2px;
+  transform: translateX(-50%);
+  cursor: pointer;
+  pointer-events: auto;
+  opacity: 0.7;
+  transition: opacity 0.15s, height 0.15s;
+}
+
+.keyframe-marker:hover {
+  opacity: 1;
+  height: 20px;
+}
+
+.keyframe-marker.active {
+  opacity: 1;
+  background: #fff;
 }
 
 .fps-control label {
@@ -143,46 +256,5 @@ function onFpsChange(e: Event) {
   padding: 4px 6px;
   border-radius: 3px;
   text-align: center;
-}
-
-.drawn-frames {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.drawn-label {
-  color: #555;
-}
-
-.frame-indicators {
-  display: flex;
-  gap: 3px;
-  flex-wrap: wrap;
-}
-
-.frame-indicator {
-  padding: 2px 5px;
-  background: #2a2a2a;
-  color: #888;
-  border-radius: 3px;
-  font-size: 10px;
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-
-.frame-indicator:hover {
-  background: var(--accent);
-  color: #fff;
-}
-
-.frame-indicator.active {
-  background: var(--accent);
-  color: #fff;
-}
-
-.no-frames {
-  color: #444;
-  font-style: italic;
 }
 </style>

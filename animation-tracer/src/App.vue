@@ -70,6 +70,11 @@
           <div v-else class="upload-layer">
             <VideoPlayer ref="videoPlayer" />
           </div>
+          
+          <!-- Status bar for tool hints -->
+          <div class="status-bar" v-if="drawingStore.hoveredHint">
+            {{ drawingStore.hoveredHint }}
+          </div>
         </div>
       </div>
 
@@ -267,6 +272,7 @@ onUnmounted(() => {
   flex-shrink: 0;
   background: #1a1a1a;
   border-right: 1px solid #2a2a2a;
+  overflow: hidden;
 }
 
 .sidebar-right {
@@ -349,6 +355,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.status-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #ccc;
+  font-size: 11px;
+  border-radius: 4px;
+  z-index: 100;
+  pointer-events: none;
+  max-width: 300px;
 }
 
 .app-footer {
