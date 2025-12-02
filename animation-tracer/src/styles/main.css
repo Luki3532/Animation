@@ -1,0 +1,88 @@
+:root {
+  --accent: #e85d04;
+  --accent-dim: #dc6e2a;
+  --surface: #1c1c1c;
+  --surface-alt: #252525;
+  --surface-raised: #2d2d2d;
+  --border: #3a3a3a;
+  --text: #e8e8e8;
+  --text-dim: #888;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+::selection {
+  background: var(--accent);
+  color: white;
+}
+
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s, transform 0.1s;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+input[type="number"],
+input[type="text"] {
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+input[type="range"] {
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+input[type="color"] {
+  cursor: pointer;
+  border: none;
+}
