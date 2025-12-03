@@ -139,6 +139,13 @@
           <Package :size="14" /> Export Sprite Sheet
         </button>
         <button
+          @click="openCustomExport"
+          :disabled="!drawingStore.hasDrawings"
+          class="primary custom-export-btn"
+        >
+          <Settings :size="14" /> Custom Export
+        </button>
+        <button
           @click="exportCurrentFrame"
           :disabled="!hasCurrentFrameDrawing"
         >
@@ -153,6 +160,16 @@
         <img :src="previewUrl" alt="Sprite sheet preview" />
       </div>
     </div>
+
+    <!-- Custom Export Dialog -->
+    <CustomExportDialog
+      :is-open="isCustomExportOpen"
+      :total-frames="drawingStore.drawnFrameIndices.length"
+      :base-width="drawingStore.canvasSize.width"
+      :base-height="drawingStore.canvasSize.height"
+      @close="isCustomExportOpen = false"
+      @export="handleCustomExport"
+    />
   </div>
 </template>
 
@@ -163,6 +180,7 @@ import { useVideoStore } from '../stores/videoStore'
 import { ExportService } from '../services/exportService'
 import { CANVAS_SIZES } from '../types/drawing'
 import type { PreviewBackground } from '../types/video'
+import type { CustomExportOptions } from '../types/export'
 import { 
   Play, 
   Pause, 
@@ -171,8 +189,10 @@ import {
   CircleDot,
   Palette,
   Package,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Settings
 } from 'lucide-vue-next'
+import CustomExportDialog from './CustomExportDialog.vue'
 
 const drawingStore = useDrawingStore()
 const videoStore = useVideoStore()
@@ -181,6 +201,7 @@ const customWidth = ref(128)
 const customHeight = ref(128)
 const padding = ref(1)
 const previewUrl = ref('')
+const isCustomExportOpen = ref(false)
 
 // Animation preview state
 const isPlaying = ref(true)
@@ -381,6 +402,24 @@ async function exportCurrentFrame() {
     await ExportService.exportSingleFrame(frameDrawing, filename)
   }
 }
+
+function openCustomExport() {
+  isCustomExportOpen.value = true
+}
+
+async function handleCustomExport(options: CustomExportOptions) {
+  try {
+    await ExportService.customExport(
+      drawingStore.frameDrawings,
+      drawingStore.canvasSize,
+      options
+    )
+    isCustomExportOpen.value = false
+  } catch (error) {
+    console.error('Custom export failed:', error)
+    alert('Custom export failed: ' + (error as Error).message)
+  }
+}
 </script>
 
 <style scoped>
@@ -526,6 +565,17 @@ async function exportCurrentFrame() {
 
 .export-buttons button.primary:hover:not(:disabled) {
   background: #f06b1a;
+}
+
+.export-buttons button.custom-export-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  font-weight: 600;
+}
+
+.export-buttons button.custom-export-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5568d3 0%, #63408a 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
 }
 
 .preview-container {
