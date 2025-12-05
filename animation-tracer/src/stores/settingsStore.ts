@@ -1,5 +1,14 @@
 import { defineStore } from 'pinia'
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
+import {
+  saveSettingsData,
+  loadSettingsData,
+  saveKeyMappings,
+  loadKeyMappings,
+  saveOnionSkinSettings,
+  loadOnionSkinSettings,
+  debounce
+} from '../services/persistenceService'
 
 export interface KeyMapping {
   action: string
@@ -28,6 +37,102 @@ export const useSettingsStore = defineStore('settings', () => {
   // UI Scale (affects text and UI elements)
   const uiScale = ref(1.0)
   const uiScaleOptions = [0.85, 1.0, 1.25, 1.5, 1.75, 2.0]
+  
+  // Onion skinning settings
+  const onionSkinEnabled = ref(false)
+  const onionSkinFramesBefore = ref(2)
+  const onionSkinFramesAfter = ref(1)
+  const onionSkinOpacityBefore = ref(0.3)
+  const onionSkinOpacityAfter = ref(0.2)
+  const onionSkinColorBefore = ref('#ff0000')
+  const onionSkinColorAfter = ref('#0000ff')
+  const onionSkinKeyframesOnly = ref(false)
+  
+  // Persistence state
+  const isLoaded = ref(false)
+  
+  // Debounced save functions
+  const debouncedSaveSettings = debounce(() => {
+    if (!isLoaded.value) return
+    saveSettingsData({
+      artistControls: artistControls.value,
+      smoothLineMode: smoothLineMode.value,
+      smoothLineStrength: smoothLineStrength.value,
+      resizableSidebars: resizableSidebars.value,
+      leftSidebarWidth: leftSidebarWidth.value,
+      rightSidebarWidth: rightSidebarWidth.value,
+      uiScale: uiScale.value
+    })
+  }, 300)
+  
+  const debouncedSaveKeyMappings = debounce(() => {
+    if (!isLoaded.value) return
+    saveKeyMappings([...keyMappings])
+  }, 300)
+  
+  const debouncedSaveOnionSkin = debounce(() => {
+    if (!isLoaded.value) return
+    saveOnionSkinSettings({
+      enabled: onionSkinEnabled.value,
+      framesBefore: onionSkinFramesBefore.value,
+      framesAfter: onionSkinFramesAfter.value,
+      opacityBefore: onionSkinOpacityBefore.value,
+      opacityAfter: onionSkinOpacityAfter.value,
+      colorBefore: onionSkinColorBefore.value,
+      colorAfter: onionSkinColorAfter.value,
+      keyframesOnly: onionSkinKeyframesOnly.value
+    })
+  }, 300)
+  
+  // Auto-save watchers for settings
+  watch([artistControls, smoothLineMode, smoothLineStrength, resizableSidebars, 
+         leftSidebarWidth, rightSidebarWidth, uiScale], debouncedSaveSettings)
+  
+  // Auto-save watchers for onion skin
+  watch([onionSkinEnabled, onionSkinFramesBefore, onionSkinFramesAfter,
+         onionSkinOpacityBefore, onionSkinOpacityAfter, onionSkinColorBefore,
+         onionSkinColorAfter, onionSkinKeyframesOnly], debouncedSaveOnionSkin)
+  
+  // Initialize from storage
+  async function initFromStorage() {
+    const [savedSettings, savedKeyMappings, savedOnionSkin] = await Promise.all([
+      loadSettingsData(),
+      loadKeyMappings(),
+      loadOnionSkinSettings()
+    ])
+    
+    if (savedSettings) {
+      artistControls.value = savedSettings.artistControls
+      smoothLineMode.value = savedSettings.smoothLineMode
+      smoothLineStrength.value = savedSettings.smoothLineStrength
+      resizableSidebars.value = savedSettings.resizableSidebars
+      leftSidebarWidth.value = savedSettings.leftSidebarWidth
+      rightSidebarWidth.value = savedSettings.rightSidebarWidth
+      uiScale.value = savedSettings.uiScale
+    }
+    
+    if (savedKeyMappings && savedKeyMappings.length > 0) {
+      savedKeyMappings.forEach((saved, index) => {
+        if (keyMappings[index]) {
+          keyMappings[index].key = saved.key
+          keyMappings[index].mouseButton = saved.mouseButton
+        }
+      })
+    }
+    
+    if (savedOnionSkin) {
+      onionSkinEnabled.value = savedOnionSkin.enabled
+      onionSkinFramesBefore.value = savedOnionSkin.framesBefore
+      onionSkinFramesAfter.value = savedOnionSkin.framesAfter
+      onionSkinOpacityBefore.value = savedOnionSkin.opacityBefore
+      onionSkinOpacityAfter.value = savedOnionSkin.opacityAfter
+      onionSkinColorBefore.value = savedOnionSkin.colorBefore
+      onionSkinColorAfter.value = savedOnionSkin.colorAfter
+      onionSkinKeyframesOnly.value = savedOnionSkin.keyframesOnly
+    }
+    
+    isLoaded.value = true
+  }
   
   function setArtistControls(enabled: boolean) {
     artistControls.value = enabled
@@ -71,6 +176,9 @@ export const useSettingsStore = defineStore('settings', () => {
     { action: 'prevFrame', label: 'Previous Frame', key: 'ArrowLeft', mouseButton: null },
     { action: 'nextFrame', label: 'Next Frame', key: 'ArrowRight', mouseButton: null },
   ])
+  
+  // Auto-save watcher for key mappings
+  watch(keyMappings, debouncedSaveKeyMappings, { deep: true })
   
   // Currently remapping action (null if not remapping)
   const remappingAction = ref<string | null>(null)
@@ -149,6 +257,39 @@ export const useSettingsStore = defineStore('settings', () => {
     keyMappings[10] = { action: 'nextFrame', label: 'Next Frame', key: 'ArrowRight', mouseButton: null }
   }
   
+  // Onion skin setters
+  function setOnionSkinEnabled(enabled: boolean) {
+    onionSkinEnabled.value = enabled
+  }
+  
+  function setOnionSkinFramesBefore(count: number) {
+    onionSkinFramesBefore.value = Math.max(0, Math.min(5, count))
+  }
+  
+  function setOnionSkinFramesAfter(count: number) {
+    onionSkinFramesAfter.value = Math.max(0, Math.min(5, count))
+  }
+  
+  function setOnionSkinOpacityBefore(opacity: number) {
+    onionSkinOpacityBefore.value = Math.max(0, Math.min(1, opacity))
+  }
+  
+  function setOnionSkinOpacityAfter(opacity: number) {
+    onionSkinOpacityAfter.value = Math.max(0, Math.min(1, opacity))
+  }
+  
+  function setOnionSkinColorBefore(color: string) {
+    onionSkinColorBefore.value = color
+  }
+  
+  function setOnionSkinColorAfter(color: string) {
+    onionSkinColorAfter.value = color
+  }
+  
+  function setOnionSkinKeyframesOnly(enabled: boolean) {
+    onionSkinKeyframesOnly.value = enabled
+  }
+  
   return {
     remapMode,
     artistControls,
@@ -162,6 +303,19 @@ export const useSettingsStore = defineStore('settings', () => {
     uiScaleOptions,
     keyMappings,
     remappingAction,
+    // Onion skin
+    onionSkinEnabled,
+    onionSkinFramesBefore,
+    onionSkinFramesAfter,
+    onionSkinOpacityBefore,
+    onionSkinOpacityAfter,
+    onionSkinColorBefore,
+    onionSkinColorAfter,
+    onionSkinKeyframesOnly,
+    // Persistence
+    isLoaded,
+    initFromStorage,
+    // Actions
     setRemapMode,
     setArtistControls,
     setSmoothLineMode,
@@ -176,6 +330,15 @@ export const useSettingsStore = defineStore('settings', () => {
     clearMapping,
     getActionForKey,
     getActionForMouseButton,
-    resetToDefaults
+    resetToDefaults,
+    // Onion skin setters
+    setOnionSkinEnabled,
+    setOnionSkinFramesBefore,
+    setOnionSkinFramesAfter,
+    setOnionSkinOpacityBefore,
+    setOnionSkinOpacityAfter,
+    setOnionSkinColorBefore,
+    setOnionSkinColorAfter,
+    setOnionSkinKeyframesOnly
   }
 })

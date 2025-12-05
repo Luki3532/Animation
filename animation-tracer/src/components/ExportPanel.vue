@@ -6,10 +6,11 @@
       <div class="animation-preview">
         <div class="preview-canvas-container" :class="previewBgClass" :style="previewBgStyle">
           <img 
-            v-if="croppedFrameUrl" 
-            :src="croppedFrameUrl" 
+            v-if="displayFrameUrl" 
+            :src="displayFrameUrl" 
             alt="Animation frame"
             class="preview-frame"
+            :class="{ 'true-size': previewCropMode === 'true-size' }"
           />
           <div v-else class="no-preview">No frames yet</div>
         </div>
@@ -31,6 +32,25 @@
           <span class="frame-counter">
             {{ currentPreviewIndex + 1 }}/{{ drawingStore.drawnFrameIndices.length }}
           </span>
+        </div>
+        <!-- Crop Mode Toggle -->
+        <div class="crop-mode-options">
+          <button 
+            :class="{ active: previewCropMode === 'autocrop' }"
+            @click="previewCropMode = 'autocrop'"
+            title="Autocrop - Trim transparent pixels"
+          >
+            <Crop :size="14" />
+            <span>Autocrop</span>
+          </button>
+          <button 
+            :class="{ active: previewCropMode === 'true-size' }"
+            @click="previewCropMode = 'true-size'"
+            title="True Size - Keep original canvas dimensions"
+          >
+            <Maximize :size="14" />
+            <span>True Size</span>
+          </button>
         </div>
         <div class="bg-options">
           <button 
@@ -190,9 +210,12 @@ import {
   Palette,
   Package,
   Image as ImageIcon,
-  Settings
+  Settings,
+  Crop,
+  Maximize
 } from 'lucide-vue-next'
 import CustomExportDialog from './CustomExportDialog.vue'
+import { saveExportPrefs, loadExportPrefs } from '../services/persistenceService'
 
 const drawingStore = useDrawingStore()
 const videoStore = useVideoStore()
@@ -208,6 +231,9 @@ const isPlaying = ref(true)
 const previewFps = ref(8)
 const currentPreviewIndex = ref(0)
 const croppedFrameUrl = ref<string | null>(null)
+
+// Preview crop mode
+const previewCropMode = ref<'autocrop' | 'true-size'>('autocrop')
 const previewBg = ref<PreviewBackground>('transparent')
 let playbackInterval: number | null = null
 
@@ -291,6 +317,14 @@ const currentPreviewFrame = computed(() => {
   return drawing?.thumbnail || null
 })
 
+// Display URL based on crop mode
+const displayFrameUrl = computed(() => {
+  if (previewCropMode.value === 'true-size') {
+    return currentPreviewFrame.value
+  }
+  return croppedFrameUrl.value
+})
+
 // Update cropped frame when current frame changes
 watch(currentPreviewFrame, async (newFrame) => {
   if (newFrame) {
@@ -299,6 +333,16 @@ watch(currentPreviewFrame, async (newFrame) => {
     croppedFrameUrl.value = null
   }
 }, { immediate: true })
+
+// Save export preferences when they change
+watch([previewCropMode, previewBg, customBgColor, previewFps], () => {
+  saveExportPrefs({
+    previewCropMode: previewCropMode.value,
+    previewBg: previewBg.value,
+    customBgColor: customBgColor.value,
+    previewFps: previewFps.value
+  })
+})
 
 function togglePlayback() {
   isPlaying.value = !isPlaying.value
@@ -351,7 +395,16 @@ watch(
   }
 )
 
-onMounted(() => {
+onMounted(async () => {
+  // Load saved export preferences
+  const savedPrefs = await loadExportPrefs()
+  if (savedPrefs) {
+    previewCropMode.value = savedPrefs.previewCropMode
+    previewBg.value = savedPrefs.previewBg as PreviewBackground
+    customBgColor.value = savedPrefs.customBgColor
+    previewFps.value = savedPrefs.previewFps
+  }
+  
   if (drawingStore.drawnFrameIndices.length > 0) {
     startPlayback()
   }
@@ -638,6 +691,37 @@ async function handleCustomExport(options: CustomExportOptions) {
 
 .preview-canvas-container.bg-custom {
   background: none;
+}
+
+/* Crop Mode Options */
+.crop-mode-options {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.crop-mode-options button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 8px;
+  background: #252525;
+  border-radius: 3px;
+  font-size: 10px;
+  color: #888;
+  transition: all 0.15s;
+}
+
+.crop-mode-options button:hover {
+  background: #333;
+  color: #ccc;
+}
+
+.crop-mode-options button.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 .bg-options {

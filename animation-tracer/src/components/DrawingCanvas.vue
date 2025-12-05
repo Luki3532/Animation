@@ -1,5 +1,7 @@
 <template>
   <div class="drawing-canvas-container" ref="containerRef">
+    <!-- Onion skin overlay (rendered below main canvas) -->
+    <canvas ref="onionCanvasRef" class="onion-canvas" />
     <canvas ref="canvasRef" />
   </div>
 </template>
@@ -17,6 +19,7 @@ const settingsStore = useSettingsStore()
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const onionCanvasRef = ref<HTMLCanvasElement | null>(null)
 let fabricCanvas: Canvas | null = null
 
 // Shape drawing state
@@ -154,6 +157,7 @@ function scaleCanvasToFit() {
   const container = containerRef.value
   const canvasWidth = videoStore.state.width || drawingStore.canvasSize.width
   const canvasHeight = videoStore.state.height || drawingStore.canvasSize.height
+  const onionCanvas = onionCanvasRef.value
 
   // Try to find the video frame canvas to match its exact position
   const videoFrameCanvas = document.querySelector('.frame-canvas') as HTMLCanvasElement
@@ -162,6 +166,13 @@ function scaleCanvasToFit() {
     // Match the video canvas position exactly
     const videoRect = videoFrameCanvas.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
+    
+    // Check if video canvas has valid dimensions (it may not be rendered yet)
+    if (videoRect.width <= 0 || videoRect.height <= 0) {
+      // Retry after a short delay
+      setTimeout(() => scaleCanvasToFit(), 100)
+      return
+    }
     
     const offsetX = videoRect.left - containerRect.left
     const offsetY = videoRect.top - containerRect.top
@@ -176,6 +187,17 @@ function scaleCanvasToFit() {
       wrapper.style.transformOrigin = 'top left'
       wrapper.style.width = `${canvasWidth}px`
       wrapper.style.height = `${canvasHeight}px`
+    }
+    
+    // Scale onion canvas to match
+    if (onionCanvas) {
+      onionCanvas.style.position = 'absolute'
+      onionCanvas.style.left = `${offsetX}px`
+      onionCanvas.style.top = `${offsetY}px`
+      onionCanvas.style.transform = `scale(${scale})`
+      onionCanvas.style.transformOrigin = 'top left'
+      onionCanvas.style.width = `${canvasWidth}px`
+      onionCanvas.style.height = `${canvasHeight}px`
     }
   } else {
     // No video - use standard centering
@@ -198,6 +220,17 @@ function scaleCanvasToFit() {
       wrapper.style.transformOrigin = 'top left'
       wrapper.style.width = `${canvasWidth}px`
       wrapper.style.height = `${canvasHeight}px`
+    }
+    
+    // Scale onion canvas to match
+    if (onionCanvas) {
+      onionCanvas.style.position = 'absolute'
+      onionCanvas.style.left = `${offsetX}px`
+      onionCanvas.style.top = `${offsetY}px`
+      onionCanvas.style.transform = `scale(${scale})`
+      onionCanvas.style.transformOrigin = 'top left'
+      onionCanvas.style.width = `${canvasWidth}px`
+      onionCanvas.style.height = `${canvasHeight}px`
     }
   }
 }
@@ -622,7 +655,125 @@ function loadFrameDrawing() {
       fabricCanvas?.renderAll()
     })
   }
+  
+  // Render onion skins
+  renderOnionSkins()
 }
+
+// Render onion skin overlays from adjacent frames
+function renderOnionSkins() {
+  const onionCanvas = onionCanvasRef.value
+  if (!onionCanvas) return
+  
+  const ctx = onionCanvas.getContext('2d')
+  if (!ctx) return
+  
+  // Set canvas size to match main canvas
+  const width = videoStore.state.width || drawingStore.canvasSize.width
+  const height = videoStore.state.height || drawingStore.canvasSize.height
+  onionCanvas.width = width
+  onionCanvas.height = height
+  
+  // Clear canvas
+  ctx.clearRect(0, 0, width, height)
+  
+  // Exit if onion skin is disabled
+  if (!settingsStore.onionSkinEnabled) return
+  
+  const currentFrame = videoStore.state.currentFrame
+  const framesBefore = settingsStore.onionSkinFramesBefore
+  const framesAfter = settingsStore.onionSkinFramesAfter
+  const opacityBefore = settingsStore.onionSkinOpacityBefore
+  const opacityAfter = settingsStore.onionSkinOpacityAfter
+  const colorBefore = settingsStore.onionSkinColorBefore
+  const colorAfter = settingsStore.onionSkinColorAfter
+  const keyframesOnly = settingsStore.onionSkinKeyframesOnly
+  
+  // Get frames to render
+  const framesToRender: Array<{ index: number; isBefore: boolean; distance: number }> = []
+  
+  if (keyframesOnly) {
+    // Only show drawn keyframes
+    const drawnFrames = drawingStore.drawnFrameIndices
+    
+    // Previous keyframes
+    const beforeFrames = drawnFrames.filter(f => f < currentFrame).slice(-framesBefore)
+    beforeFrames.forEach((f, i) => {
+      framesToRender.push({ index: f, isBefore: true, distance: beforeFrames.length - i })
+    })
+    
+    // Next keyframes
+    const afterFrames = drawnFrames.filter(f => f > currentFrame).slice(0, framesAfter)
+    afterFrames.forEach((f, i) => {
+      framesToRender.push({ index: f, isBefore: false, distance: i + 1 })
+    })
+  } else {
+    // Sequential frames
+    for (let i = framesBefore; i >= 1; i--) {
+      const frameIndex = currentFrame - i
+      if (frameIndex >= 0 && drawingStore.getFrameDrawing(frameIndex)) {
+        framesToRender.push({ index: frameIndex, isBefore: true, distance: i })
+      }
+    }
+    for (let i = 1; i <= framesAfter; i++) {
+      const frameIndex = currentFrame + i
+      if (frameIndex < videoStore.state.frameCount && drawingStore.getFrameDrawing(frameIndex)) {
+        framesToRender.push({ index: frameIndex, isBefore: false, distance: i })
+      }
+    }
+  }
+  
+  // Render each frame with appropriate color tint and opacity
+  framesToRender.forEach(({ index, isBefore, distance }) => {
+    const frameDrawing = drawingStore.getFrameDrawing(index)
+    if (!frameDrawing?.thumbnail) return
+    
+    const baseOpacity = isBefore ? opacityBefore : opacityAfter
+    const color = isBefore ? colorBefore : colorAfter
+    // Fade opacity based on distance
+    const opacity = baseOpacity / distance
+    
+    const img = new Image()
+    img.onload = () => {
+      // Create temporary canvas for color tinting
+      const tempCanvas = document.createElement('canvas')
+      tempCanvas.width = width
+      tempCanvas.height = height
+      const tempCtx = tempCanvas.getContext('2d')!
+      
+      // Draw original image
+      tempCtx.drawImage(img, 0, 0, width, height)
+      
+      // Apply color tint using composite operations
+      tempCtx.globalCompositeOperation = 'source-atop'
+      tempCtx.fillStyle = color
+      tempCtx.fillRect(0, 0, width, height)
+      
+      // Draw tinted image to main onion canvas with opacity
+      ctx.globalAlpha = opacity
+      ctx.drawImage(tempCanvas, 0, 0)
+      ctx.globalAlpha = 1
+    }
+    img.src = frameDrawing.thumbnail
+  })
+}
+
+// Watch for onion skin settings changes
+watch(
+  () => [
+    settingsStore.onionSkinEnabled,
+    settingsStore.onionSkinFramesBefore,
+    settingsStore.onionSkinFramesAfter,
+    settingsStore.onionSkinOpacityBefore,
+    settingsStore.onionSkinOpacityAfter,
+    settingsStore.onionSkinColorBefore,
+    settingsStore.onionSkinColorAfter,
+    settingsStore.onionSkinKeyframesOnly
+  ],
+  () => {
+    renderOnionSkins()
+  }
+)
 
 // Smoothing state for real-time line stabilization
 let smoothingBuffer: { x: number; y: number }[] = []
@@ -779,8 +930,26 @@ watch(
         width: newWidth,
         height: newHeight,
       })
-      scaleCanvasToFit()
+      // Wait for video canvas to render, then scale
+      setTimeout(() => scaleCanvasToFit(), 50)
       loadFrameDrawing()
+    }
+  }
+)
+
+// Watch for crop changes - need to rescale drawing canvas to match
+watch(
+  () => [
+    videoStore.state.cropTop,
+    videoStore.state.cropRight,
+    videoStore.state.cropBottom,
+    videoStore.state.cropLeft
+  ],
+  async () => {
+    if (fabricCanvas && videoStore.hasVideo) {
+      await nextTick()
+      // Small delay to ensure CSS has been applied to frame-canvas
+      setTimeout(() => scaleCanvasToFit(), 50)
     }
   }
 )
@@ -815,13 +984,8 @@ function handleKeydown(e: KeyboardEvent) {
   // Ignore if typing in input
   if ((e.target as HTMLElement).tagName === 'INPUT') return
 
-  if (e.ctrlKey && e.key === 'z') {
-    e.preventDefault()
-    undo()
-  } else if (e.ctrlKey && e.key === 'y') {
-    e.preventDefault()
-    redo()
-  } else if (e.key === 'p') {
+  // Note: Ctrl+Z/Y handled by App.vue global key handler to avoid double-undo
+  if (e.key === 'p') {
     drawingStore.setTool('pen')
   } else if (e.key === 'e') {
     drawingStore.setTool('eraser')
@@ -895,8 +1059,17 @@ defineExpose({
   image-rendering: pixelated;
 }
 
+.onion-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* Fabric canvas wrapper - allow transform scaling */
 .drawing-canvas-container :deep(.canvas-container) {
   position: relative !important;
+  z-index: 1;
 }
 </style>

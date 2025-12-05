@@ -22,6 +22,40 @@
       </button>
     </div>
 
+    <!-- Onion Skin Controls -->
+    <div class="onion-skin-controls">
+      <button 
+        class="onion-toggle" 
+        :class="{ active: settingsStore.onionSkinEnabled }"
+        @click="settingsStore.setOnionSkinEnabled(!settingsStore.onionSkinEnabled)"
+        title="Toggle onion skinning"
+      >
+        <Layers :size="14" />
+        <span>Onion</span>
+      </button>
+      <div class="onion-counts" v-if="settingsStore.onionSkinEnabled">
+        <div class="onion-count before">
+          <button @click="settingsStore.setOnionSkinFramesBefore(settingsStore.onionSkinFramesBefore - 1)" :disabled="settingsStore.onionSkinFramesBefore <= 0">
+            <Minus :size="10" />
+          </button>
+          <span class="count-value" :style="{ color: settingsStore.onionSkinColorBefore }">{{ settingsStore.onionSkinFramesBefore }}</span>
+          <button @click="settingsStore.setOnionSkinFramesBefore(settingsStore.onionSkinFramesBefore + 1)" :disabled="settingsStore.onionSkinFramesBefore >= 5">
+            <Plus :size="10" />
+          </button>
+        </div>
+        <span class="onion-separator">|</span>
+        <div class="onion-count after">
+          <button @click="settingsStore.setOnionSkinFramesAfter(settingsStore.onionSkinFramesAfter - 1)" :disabled="settingsStore.onionSkinFramesAfter <= 0">
+            <Minus :size="10" />
+          </button>
+          <span class="count-value" :style="{ color: settingsStore.onionSkinColorAfter }">{{ settingsStore.onionSkinFramesAfter }}</span>
+          <button @click="settingsStore.setOnionSkinFramesAfter(settingsStore.onionSkinFramesAfter + 1)" :disabled="settingsStore.onionSkinFramesAfter >= 5">
+            <Plus :size="10" />
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="timeline-slider">
       <div class="slider-track">
         <input
@@ -63,12 +97,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Plus, Minus } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
+import { useSettingsStore } from '../stores/settingsStore'
 
 const videoStore = useVideoStore()
 const drawingStore = useDrawingStore()
+const settingsStore = useSettingsStore()
 
 // Keyframe navigation
 const hasPrevKeyframe = computed(() => {
@@ -256,5 +292,82 @@ function onFpsChange(e: Event) {
   padding: 4px 6px;
   border-radius: 3px;
   text-align: center;
+}
+
+/* Onion Skin Controls */
+.onion-skin-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-left: 1px solid #333;
+}
+
+.onion-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #252525;
+  border-radius: 3px;
+  color: #888;
+  font-size: 11px;
+  transition: all 0.15s;
+}
+
+.onion-toggle:hover {
+  background: #333;
+  color: #ccc;
+}
+
+.onion-toggle.active {
+  background: rgba(232, 93, 4, 0.2);
+  color: var(--accent);
+}
+
+.onion-counts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.onion-count {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.onion-count button {
+  width: 18px;
+  height: 18px;
+  background: #252525;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  font-size: 10px;
+}
+
+.onion-count button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.onion-count button:hover:not(:disabled) {
+  background: #333;
+  color: #fff;
+}
+
+.count-value {
+  min-width: 14px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.onion-separator {
+  color: #444;
+  font-size: 10px;
 }
 </style>

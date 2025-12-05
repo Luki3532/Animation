@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { VideoState } from '../types/video'
+import {
+  saveVideoMetadata,
+  loadVideoMetadata,
+  debounce
+} from '../services/persistenceService'
 
 export const useVideoStore = defineStore('video', () => {
   const state = ref<VideoState>({
@@ -19,9 +24,18 @@ export const useVideoStore = defineStore('video', () => {
     cropLeft: 0
   })
   
+  // Last video reference for reopening
+  const lastVideoName = ref<string>('')
+  const lastVideoPath = ref<string>('')
+  const savedCurrentFrame = ref<number>(0)
+  
+  // Persistence state
+  const isLoaded = ref(false)
+  
   // Computed
   const currentTime = computed(() => state.value.currentFrame / state.value.fps)
   const hasVideo = computed(() => state.value.url !== '')
+  const hasSavedVideo = computed(() => lastVideoName.value !== '')
   
   // Cropped dimensions
   const croppedWidth = computed(() => {
@@ -36,6 +50,54 @@ export const useVideoStore = defineStore('video', () => {
     return Math.max(1, state.value.height - topPx - bottomPx)
   })
   
+  // Debounced save function
+  const debouncedSave = debounce(() => {
+    if (!isLoaded.value) return
+    if (!lastVideoName.value) return
+    saveVideoMetadata({
+      lastVideoName: lastVideoName.value,
+      lastVideoPath: lastVideoPath.value,
+      fps: state.value.fps,
+      cropTop: state.value.cropTop,
+      cropRight: state.value.cropRight,
+      cropBottom: state.value.cropBottom,
+      cropLeft: state.value.cropLeft,
+      currentFrame: state.value.currentFrame
+    })
+  }, 500)
+  
+  // Auto-save watchers
+  watch(() => state.value.fps, debouncedSave)
+  watch(() => state.value.cropTop, debouncedSave)
+  watch(() => state.value.cropRight, debouncedSave)
+  watch(() => state.value.cropBottom, debouncedSave)
+  watch(() => state.value.cropLeft, debouncedSave)
+  watch(() => state.value.currentFrame, debouncedSave)
+  
+  // Initialize from storage
+  async function initFromStorage() {
+    const saved = await loadVideoMetadata()
+    if (saved) {
+      lastVideoName.value = saved.lastVideoName
+      lastVideoPath.value = saved.lastVideoPath
+      savedCurrentFrame.value = saved.currentFrame
+      // Store saved crop/fps to apply when video is reloaded
+      state.value.fps = saved.fps
+      state.value.cropTop = saved.cropTop
+      state.value.cropRight = saved.cropRight
+      state.value.cropBottom = saved.cropBottom
+      state.value.cropLeft = saved.cropLeft
+    }
+    isLoaded.value = true
+  }
+  
+  // Apply saved settings after video loads
+  function applySavedSettings() {
+    if (savedCurrentFrame.value > 0 && savedCurrentFrame.value < state.value.frameCount) {
+      state.value.currentFrame = savedCurrentFrame.value
+    }
+  }
+  
   // Actions
   function loadVideo(file: File) {
     // Revoke previous URL if exists
@@ -47,6 +109,12 @@ export const useVideoStore = defineStore('video', () => {
     state.value.url = URL.createObjectURL(file)
     state.value.isLoaded = false
     state.value.currentFrame = 0
+    
+    // Save video name for reopen feature
+    lastVideoName.value = file.name
+    // Note: We can't get the full path due to browser security
+    // but we store the name for user recognition
+    lastVideoPath.value = file.name
   }
   
   function setVideoMetadata(duration: number, width: number, height: number, fps: number = 24) {
@@ -122,8 +190,14 @@ export const useVideoStore = defineStore('video', () => {
     state,
     currentTime,
     hasVideo,
+    hasSavedVideo,
+    lastVideoName,
+    lastVideoPath,
     croppedWidth,
     croppedHeight,
+    isLoaded,
+    initFromStorage,
+    applySavedSettings,
     loadVideo,
     setVideoMetadata,
     setCurrentFrame,

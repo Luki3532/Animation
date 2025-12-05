@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { FrameDrawing, ToolSettings, CanvasSize } from '../types/drawing'
 import { CANVAS_SIZES } from '../types/drawing'
+import { 
+  saveDrawingData, 
+  loadDrawingData, 
+  debounce 
+} from '../services/persistenceService'
 
 export const useDrawingStore = defineStore('drawing', () => {
   // Frame drawings storage
@@ -25,9 +30,38 @@ export const useDrawingStore = defineStore('drawing', () => {
   const history = ref<string[]>([])
   const historyIndex = ref(-1)
   
+  // Persistence state
+  const isLoaded = ref(false)
+  
   // Computed
   const hasDrawings = computed(() => frameDrawings.value.size > 0)
   const drawnFrameIndices = computed(() => Array.from(frameDrawings.value.keys()).sort((a, b) => a - b))
+  
+  // Debounced save function (300ms delay)
+  const debouncedSave = debounce(() => {
+    if (!isLoaded.value) return
+    saveDrawingData({
+      frameDrawings: Array.from(frameDrawings.value.entries()),
+      toolSettings: toolSettings.value,
+      canvasSize: canvasSize.value
+    })
+  }, 300)
+  
+  // Auto-save watchers
+  watch(frameDrawings, debouncedSave, { deep: true })
+  watch(toolSettings, debouncedSave, { deep: true })
+  watch(canvasSize, debouncedSave, { deep: true })
+  
+  // Initialize from storage
+  async function initFromStorage() {
+    const saved = await loadDrawingData()
+    if (saved) {
+      frameDrawings.value = new Map(saved.frameDrawings)
+      toolSettings.value = saved.toolSettings
+      canvasSize.value = saved.canvasSize
+    }
+    isLoaded.value = true
+  }
   
   // Actions
   function saveFrameDrawing(frameIndex: number, fabricJSON: string, thumbnail: string) {
@@ -115,6 +149,8 @@ export const useDrawingStore = defineStore('drawing', () => {
     hoveredHint,
     hasDrawings,
     drawnFrameIndices,
+    isLoaded,
+    initFromStorage,
     saveFrameDrawing,
     getFrameDrawing,
     deleteFrameDrawing,

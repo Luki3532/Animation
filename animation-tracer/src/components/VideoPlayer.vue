@@ -20,6 +20,18 @@
           Choose File
           <input type="file" accept="video/*" @change="handleFileSelect" hidden />
         </label>
+        
+        <!-- Reopen Last Video Button -->
+        <div v-if="videoStore.hasSavedVideo" class="reopen-section">
+          <p class="reopen-hint">Previous session detected</p>
+          <button class="reopen-button" @click="reopenLastVideo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M3 3v5h5"/>
+            </svg>
+            Reopen "{{ videoStore.lastVideoName }}"
+          </button>
+        </div>
       </div>
     </div>
 
@@ -83,12 +95,31 @@ function handleFileSelect(e: Event) {
   }
 }
 
+// Reopen last video - opens file picker for user to select the file
+async function reopenLastVideo() {
+  // Create a hidden file input and trigger it
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'video/*'
+  input.onchange = (e) => {
+    const target = e.target as HTMLInputElement
+    if (target.files && target.files.length > 0) {
+      videoStore.loadVideo(target.files[0])
+    }
+  }
+  input.click()
+}
+
 function onVideoLoaded() {
   const video = videoElement.value
   if (!video) return
 
   videoStore.setVideoMetadata(video.duration, video.videoWidth, video.videoHeight)
-  seekToFrame(0)
+  
+  // Apply saved frame position if available
+  videoStore.applySavedSettings()
+  
+  seekToFrame(videoStore.state.currentFrame)
 }
 
 function onSeeked() {
@@ -223,6 +254,42 @@ defineExpose({
 
 .file-button:hover {
   background: #f06b1a;
+}
+
+.reopen-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+}
+
+.reopen-hint {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.reopen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #2a2a2a;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.reopen-button:hover {
+  background: #333;
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.reopen-button svg {
+  opacity: 0.7;
 }
 
 .video-container {

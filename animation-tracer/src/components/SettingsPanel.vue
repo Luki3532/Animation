@@ -121,14 +121,40 @@
         Reset to Defaults
       </button>
     </div>
+
+    <div class="panel-section danger-section">
+      <h3>Data Management</h3>
+      
+      <p class="setting-hint">
+        Your drawings, settings, and video preferences are automatically saved locally. Use the button below to clear all saved data and start fresh.
+      </p>
+      
+      <button 
+        class="danger-btn"
+        @click="handleClearData"
+      >
+        <Trash2 :size="14" />
+        Clear All Saved Data
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settingsStore'
+import { clearAllSavedData } from '../services/persistenceService'
+import { Trash2 } from 'lucide-vue-next'
 
 const settingsStore = useSettingsStore()
+
+async function handleClearData() {
+  if (confirm('Are you sure you want to clear all saved data? This will delete your drawings, settings, and video preferences. This cannot be undone.')) {
+    await clearAllSavedData()
+    alert('All saved data has been cleared. The page will now reload.')
+    window.location.reload()
+  }
+}
 
 function toggleArtistControls(e: Event) {
   const checked = (e.target as HTMLInputElement).checked
@@ -472,5 +498,39 @@ onUnmounted(() => {
   font-size: 9px;
   color: #555;
   margin-top: 2px;
+}
+
+/* Danger Section */
+.danger-section {
+  border-top: 1px solid #333;
+  padding-top: 16px;
+  margin-top: 8px;
+}
+
+.danger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: #3a1f1f;
+  border: 1px solid #5a2f2f;
+  border-radius: 4px;
+  color: #ff6b6b;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.danger-btn:hover {
+  background: #4a2525;
+  border-color: #6a3535;
+  color: #ff8888;
+}
+
+.danger-btn:active {
+  background: #5a3030;
 }
 </style>

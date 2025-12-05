@@ -244,6 +244,18 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   if (settingsStore.remapMode) return
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
   
+  // Handle Ctrl+Z and Ctrl+Y directly for undo/redo
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault()
+    drawingCanvas.value?.undo()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault()
+    drawingCanvas.value?.redo()
+    return
+  }
+  
   const action = settingsStore.getActionForKey(e.key.toLowerCase()) || settingsStore.getActionForKey(e.key)
   if (!action) return
   
@@ -284,7 +296,14 @@ function executeAction(action: string, withModifier: boolean = false) {
 }
 
 // Register global key handler
-onMounted(() => {
+onMounted(async () => {
+  // Initialize stores from IndexedDB
+  await Promise.all([
+    drawingStore.initFromStorage(),
+    settingsStore.initFromStorage(),
+    videoStore.initFromStorage()
+  ])
+  
   window.addEventListener('keydown', handleGlobalKeydown)
 })
 
