@@ -45,17 +45,33 @@
           {{ projectStore.autoSaveStatusText }}
         </span>
         
-        <!-- Format selector (advanced option) -->
-        <select 
+        <!-- Format selector with help tooltip -->
+        <div 
           v-if="videoStore.hasProject && videoStore.hasVideo"
-          class="format-select"
-          :value="projectStore.currentFormat"
-          @change="handleFormatChange"
-          title="Project Format: .lucas (references video) or .fluf (embeds video)"
+          class="format-selector-group"
         >
-          <option value="lucas">.lucas (smaller)</option>
-          <option value="fluf">.fluf (portable)</option>
-        </select>
+          <select 
+            class="format-select"
+            :value="projectStore.currentFormat"
+            @change="handleFormatChange"
+          >
+            <option value="lucas">.lucas (smaller)</option>
+            <option value="fluf">.fluf ★</option>
+          </select>
+          <div class="format-help">
+            <span class="format-help-icon">?</span>
+            <div class="format-tooltip">
+              <div class="format-tooltip-item">
+                <strong>.lucas</strong>
+                <p>Smaller file size, references video by filename. Best when you'll always have the video file available on this computer.</p>
+              </div>
+              <div class="format-tooltip-item recommended">
+                <strong><svg class="rec-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> .fluf — Recommended</strong>
+                <p>Embeds video in project file. Larger but completely portable - perfect for sharing or archiving your work.</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
       <nav class="header-nav" v-if="videoStore.hasProject">
@@ -622,6 +638,114 @@ onUnmounted(() => {
 .format-select:focus {
   outline: none;
   border-color: #555;
+}
+
+/* Format selector group with help tooltip */
+.format-selector-group {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale, 1));
+  margin-left: calc(8px * var(--ui-scale, 1));
+}
+
+.format-selector-group .format-select {
+  margin-left: 0;
+}
+
+.format-help {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.format-help-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(16px * var(--ui-scale, 1));
+  height: calc(16px * var(--ui-scale, 1));
+  background: #444;
+  color: #888;
+  border-radius: 50%;
+  font-size: calc(10px * var(--ui-scale, 1));
+  font-weight: bold;
+  cursor: help;
+  transition: all 0.2s;
+}
+
+.format-help:hover .format-help-icon {
+  background: #555;
+  color: #bbb;
+}
+
+.format-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: calc(280px * var(--ui-scale, 1));
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: calc(6px * var(--ui-scale, 1));
+  padding: calc(12px * var(--ui-scale, 1));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all 0.2s;
+}
+
+.format-help:hover .format-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.format-tooltip::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: calc(4px * var(--ui-scale, 1));
+  width: 10px;
+  height: 10px;
+  background: #2a2a2a;
+  border-left: 1px solid #444;
+  border-top: 1px solid #444;
+  transform: rotate(45deg);
+}
+
+.format-tooltip-item {
+  margin-bottom: calc(10px * var(--ui-scale, 1));
+}
+
+.format-tooltip-item:last-child {
+  margin-bottom: 0;
+}
+
+.format-tooltip-item strong {
+  display: block;
+  color: #ddd;
+  font-size: calc(12px * var(--ui-scale, 1));
+  margin-bottom: calc(4px * var(--ui-scale, 1));
+}
+
+.format-tooltip-item p {
+  color: #999;
+  font-size: calc(11px * var(--ui-scale, 1));
+  line-height: 1.4;
+  margin: 0;
+}
+
+.format-tooltip-item.recommended strong {
+  color: #4ade80;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.format-tooltip-item.recommended .rec-icon {
+  color: #4ade80;
+  flex-shrink: 0;
 }
 
 /* Toast notification */

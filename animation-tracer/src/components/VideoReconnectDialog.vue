@@ -3,43 +3,27 @@
     <div v-if="projectStore.showVideoReconnectDialog" class="dialog-overlay" @click.self="handleDismiss">
       <div class="dialog">
         <div class="dialog-header">
-          <span class="dialog-icon">🎬</span>
-          <h2>Video Required</h2>
+          <h2>Missing Video</h2>
+          <button class="close-btn" @click="handleDismiss">×</button>
         </div>
         
         <div class="dialog-content">
-          <p class="info-text">
-            This project requires a video file to display your drawings correctly.
-          </p>
-          
-          <div class="video-info" v-if="projectStore.videoSourceRef">
-            <div class="info-row">
-              <span class="label">Expected file:</span>
-              <span class="value filename">{{ projectStore.videoSourceRef.filename }}</span>
-            </div>
-            <div class="info-row" v-if="projectStore.videoSourceRef.fileSize">
-              <span class="label">Size:</span>
-              <span class="value">{{ formatFileSize(projectStore.videoSourceRef.fileSize) }}</span>
-            </div>
-            <div class="info-row" v-if="projectStore.videoSourceRef.duration">
-              <span class="label">Duration:</span>
-              <span class="value">{{ formatDuration(projectStore.videoSourceRef.duration) }}</span>
-            </div>
+          <div class="filename-display" v-if="projectStore.videoSourceRef">
+            <code>{{ projectStore.videoSourceRef.filename }}</code>
           </div>
           
-          <p class="tip">
-            💡 Tip: Save as <strong>.fluf</strong> format to embed the video directly in your project file.
+          <div class="actions-row">
+            <button class="btn-browse" @click="handleBrowse">
+              Locate File
+            </button>
+            <button class="btn-skip" @click="handleDismiss">
+              Skip
+            </button>
+          </div>
+          
+          <p class="hint">
+            Use <code>.fluf</code> format to embed videos in your project.
           </p>
-        </div>
-        
-        <div class="dialog-actions">
-          <button class="btn btn-primary" @click="handleBrowse">
-            <span class="btn-icon">📁</span>
-            Browse for Video
-          </button>
-          <button class="btn btn-secondary" @click="handleDismiss">
-            Continue Without Video
-          </button>
         </div>
       </div>
     </div>
@@ -50,19 +34,6 @@
 import { useProjectStore } from '../stores/projectStore'
 
 const projectStore = useProjectStore()
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
-
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.floor(seconds % 60)
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
 
 async function handleBrowse() {
   await projectStore.browseForVideo()
@@ -80,139 +51,115 @@ function handleDismiss() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10000;
-  backdrop-filter: blur(4px);
 }
 
 .dialog {
-  background: #2d2d2d;
-  border-radius: 12px;
-  padding: 24px;
-  width: 420px;
+  background: #252525;
+  border-radius: 6px;
+  width: 320px;
   max-width: 90vw;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  border: 1px solid #404040;
+  border: 1px solid #333;
 }
 
 .dialog-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.dialog-icon {
-  font-size: 28px;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #333;
 }
 
 .dialog-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  color: #ccc;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  color: #999;
 }
 
 .dialog-content {
-  margin-bottom: 24px;
+  padding: 16px;
 }
 
-.info-text {
-  color: #ccc;
-  margin: 0 0 16px 0;
-  line-height: 1.5;
-}
-
-.video-info {
-  background: #1a1a1a;
-  border-radius: 8px;
-  padding: 12px 16px;
+.filename-display {
   margin-bottom: 16px;
 }
 
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-}
-
-.info-row .label {
-  color: #888;
-  font-size: 13px;
-}
-
-.info-row .value {
-  color: #fff;
-  font-size: 13px;
-}
-
-.info-row .filename {
-  font-family: monospace;
-  color: #4fc3f7;
-  word-break: break-all;
-  text-align: right;
-  max-width: 200px;
-}
-
-.tip {
-  color: #888;
+.filename-display code {
+  display: block;
+  background: #1a1a1a;
+  padding: 10px 12px;
+  border-radius: 4px;
   font-size: 12px;
-  margin: 0;
-  padding: 10px;
-  background: rgba(255, 193, 7, 0.1);
-  border-radius: 6px;
-  border-left: 3px solid #ffc107;
+  color: #6bf;
+  word-break: break-all;
+  font-family: 'Consolas', 'Monaco', monospace;
 }
 
-.tip strong {
-  color: #ffc107;
-}
-
-.dialog-actions {
+.actions-row {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.btn {
-  padding: 12px 20px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   gap: 8px;
-  transition: all 0.2s;
+  margin-bottom: 12px;
 }
 
-.btn-icon {
-  font-size: 16px;
+.btn-browse {
+  flex: 1;
+  padding: 8px 16px;
+  background: #3a3a3a;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.btn-primary {
-  background: #4caf50;
-  color: white;
+.btn-browse:hover {
+  background: #444;
+  border-color: #555;
 }
 
-.btn-primary:hover {
-  background: #43a047;
-  transform: translateY(-1px);
+.btn-skip {
+  padding: 8px 16px;
+  background: none;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  color: #777;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.btn-secondary {
-  background: transparent;
-  color: #888;
-  border: 1px solid #444;
+.btn-skip:hover {
+  border-color: #4a4a4a;
+  color: #999;
 }
 
-.btn-secondary:hover {
-  background: #333;
-  color: #ccc;
+.hint {
+  margin: 0;
+  font-size: 11px;
+  color: #555;
+}
+
+.hint code {
+  color: #5a5;
+  background: none;
+  padding: 0;
 }
 </style>

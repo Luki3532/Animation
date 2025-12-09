@@ -322,25 +322,13 @@ export const useProjectStore = defineStore('project', () => {
     isSaving.value = true
     
     try {
-      // If no name set or saveAs, prompt for name
-      let filename = projectName.value
-      if (saveAs || filename === 'Untitled') {
-        const newName = prompt('Project name:', filename)
-        if (!newName) {
-          isSaving.value = false
-          return false
-        }
-        filename = newName
-        projectName.value = newName
-      }
-      
       const { video, drawing, currentFrame } = getProjectData()
       
       // Get video file for .fluf format
       const videoFile = projectFormat.value === 'fluf' ? videoStore.state.file : null
       
       const blob = await ProjectService.saveProject(
-        filename,
+        projectName.value,
         video,
         drawing,
         currentFrame,
@@ -350,7 +338,31 @@ export const useProjectStore = defineStore('project', () => {
         videoFile
       )
       
-      // Download the file
+      // If we have a file handle, save directly to it
+      if (hasFileHandle.value && !saveAs) {
+        const success = await ProjectService.saveToHandle(blob)
+        if (success) {
+          isDirty.value = false
+          lastAutoSave.value = new Date()
+          toast(`Saved`)
+          return true
+        }
+        // If save to handle failed, fall through to download
+        hasFileHandle.value = false
+      }
+      
+      // No file handle or saveAs - prompt for name and download
+      let filename = projectName.value
+      if (saveAs || filename === 'Untitled' || !hasFileHandle.value) {
+        const newName = prompt('Project name:', filename)
+        if (!newName) {
+          isSaving.value = false
+          return false
+        }
+        filename = newName
+        projectName.value = newName
+      }
+      
       const safeFilename = filename.replace(/[^a-z0-9_\-]/gi, '_')
       const extension = projectFormat.value === 'fluf' ? '.fluf' : '.lucas'
       ProjectService.downloadBlob(blob, `${safeFilename}${extension}`)
