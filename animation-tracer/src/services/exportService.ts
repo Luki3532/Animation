@@ -680,23 +680,6 @@ export class ExportService {
     return text
   }
 }
-        break
-      case 'zip':
-        await this.exportAsImageSequence(frames, canvasSize, options, filename)
-        break
-      default:
-        throw new Error(`Unsupported format: ${options.format}`)
-    }
-
-    if (options.includeMetadata) {
-      this.exportMetadata(frames, options, filename)
-    }
-  }
-
-  /**
-   * Get frames based on export options
-   */
-  private static getFramesForExport(
     frameDrawings: Map<number, FrameDrawing>,
     options: CustomExportOptions
   ): FrameDrawing[] {
