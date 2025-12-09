@@ -88,6 +88,7 @@ import { Plus } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useProjectStore } from '../stores/projectStore'
+import { ProjectService } from '../services/projectService'
 import NewProjectDialog from './NewProjectDialog.vue'
 
 const videoStore = useVideoStore()
@@ -170,16 +171,16 @@ const frameCanvasStyle = computed(() => {
   return style
 })
 
-function handleDrop(e: DragEvent) {
+async function handleDrop(e: DragEvent) {
   isDragging.value = false
   const files = e.dataTransfer?.files
   if (files && files.length > 0) {
     const file = files[0]
     if (file.type.startsWith('video/')) {
-      // Reset project and load video
+      // Reset project and load video (drag-drop doesn't provide file handle)
       projectStore.resetProject()
       drawingStore.clearAllDrawings()
-      videoStore.loadVideo(file)
+      await projectStore.loadVideoFile(file)
       
       // Prompt for save location after video loads
       promptSaveLocationForVideo(file.name)
@@ -187,14 +188,14 @@ function handleDrop(e: DragEvent) {
   }
 }
 
-function handleFileSelect(e: Event) {
+async function handleFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
     const file = input.files[0]
-    // Reset project and load video
+    // Reset project and load video (no handle from traditional input)
     projectStore.resetProject()
     drawingStore.clearAllDrawings()
-    videoStore.loadVideo(file)
+    await projectStore.loadVideoFile(file)
     
     // Prompt for save location after video loads
     promptSaveLocationForVideo(file.name)
@@ -212,19 +213,12 @@ function promptSaveLocationForVideo(videoFilename: string) {
   }, 500)
 }
 
-// Reopen last video - opens file picker for user to select the file
+// Reopen last video - use File System Access API for handle persistence
 async function reopenLastVideo() {
-  // Create a hidden file input and trigger it
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'video/*'
-  input.onchange = (e) => {
-    const target = e.target as HTMLInputElement
-    if (target.files && target.files.length > 0) {
-      videoStore.loadVideo(target.files[0])
-    }
+  const result = await ProjectService.openVideoFilePickerWithHandle()
+  if (result) {
+    await projectStore.loadVideoFile(result.file, result.handle)
   }
-  input.click()
 }
 
 function onVideoLoaded() {

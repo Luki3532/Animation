@@ -15,6 +15,7 @@ const KEYS = {
   
   // Video store
   VIDEO_METADATA: 'frameforge_videoMetadata',
+  VIDEO_FILE_HANDLE: 'frameforge_videoFileHandle',
   
   // Export preferences
   EXPORT_PREFS: 'frameforge_exportPrefs'
@@ -212,4 +213,28 @@ export async function clearDrawingData(): Promise<void> {
 
 export async function clearVideoMetadata(): Promise<void> {
   await del(KEYS.VIDEO_METADATA)
+}
+
+// ============ Video File Handle Persistence ============
+// File handles can be stored in IndexedDB and persist across browser sessions
+
+export async function saveVideoFileHandle(handle: unknown): Promise<void> {
+  try {
+    await set(KEYS.VIDEO_FILE_HANDLE, handle)
+  } catch (error) {
+    console.error('Failed to save video file handle:', error)
+  }
+}
+
+export async function loadVideoFileHandle(): Promise<unknown> {
+  try {
+    return await get(KEYS.VIDEO_FILE_HANDLE) || null
+  } catch (error) {
+    console.error('Failed to load video file handle:', error)
+    return null
+  }
+}
+
+export async function clearVideoFileHandle(): Promise<void> {
+  await del(KEYS.VIDEO_FILE_HANDLE)
 }

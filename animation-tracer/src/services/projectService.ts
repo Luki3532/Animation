@@ -47,6 +47,9 @@ declare global {
 export class ProjectService {
   /** Stored file handle for auto-save */
   private static fileHandle: FileSystemFileHandle | null = null
+  
+  /** Stored video file handle for auto-reconnect */
+  private static videoFileHandle: FileSystemFileHandle | null = null
 
   /**
    * Check if File System Access API is supported
@@ -466,7 +469,80 @@ export class ProjectService {
   }
 
   /**
-   * Open video file picker for video reconnection
+   * Get the video file handle
+   */
+  static getVideoFileHandle(): FileSystemFileHandle | null {
+    return this.videoFileHandle
+  }
+
+  /**
+   * Set the video file handle
+   */
+  static setVideoFileHandle(handle: FileSystemFileHandle | null): void {
+    this.videoFileHandle = handle
+  }
+
+  /**
+   * Try to get video file from stored handle (for auto-reconnect)
+   * Returns the file if handle is valid and permission is granted
+   */
+  static async tryGetVideoFromHandle(): Promise<File | null> {
+    if (!this.videoFileHandle) return null
+    
+    try {
+      // Check/request permission
+      const options = { mode: 'read' as const }
+      let permission = await (this.videoFileHandle as any).queryPermission?.(options)
+      
+      if (permission !== 'granted') {
+        permission = await (this.videoFileHandle as any).requestPermission?.(options)
+        if (permission !== 'granted') {
+          return null
+        }
+      }
+      
+      // Get the file
+      const file = await this.videoFileHandle.getFile()
+      return file
+    } catch (error) {
+      // Handle is stale or permission denied
+      console.log('Video file handle is no longer valid:', error)
+      this.videoFileHandle = null
+      return null
+    }
+  }
+
+  /**
+   * Open video file picker using File System Access API (stores handle for auto-reconnect)
+   */
+  static async openVideoFilePickerWithHandle(): Promise<{ file: File; handle: FileSystemFileHandle | null } | null> {
+    if (!this.supportsFileSystemAccess() || !window.showOpenFilePicker) {
+      // Fall back to traditional file picker (no handle storage)
+      const file = await this.openVideoFilePicker()
+      return file ? { file, handle: null } : null
+    }
+
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{
+          description: 'Video Files',
+          accept: { 'video/*': ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'] }
+        }],
+        multiple: false
+      })
+      const file = await handle.getFile()
+      this.videoFileHandle = handle
+      return { file, handle }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Failed to open video file picker:', error)
+      }
+      return null
+    }
+  }
+
+  /**
+   * Open video file picker for video reconnection (legacy fallback)
    */
   static async openVideoFilePicker(): Promise<File | null> {
     return new Promise((resolve) => {

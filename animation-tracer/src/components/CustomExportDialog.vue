@@ -3,7 +3,10 @@
     <div class="dialog-backdrop" @click="close"></div>
     <div class="dialog-content">
       <div class="dialog-header">
-        <h2>Custom Export</h2>
+        <div class="header-title">
+          <Download :size="20" class="header-icon" />
+          <h2>Custom Export</h2>
+        </div>
         <button @click="close" class="close-btn">
           <X :size="18" />
         </button>
@@ -316,22 +319,31 @@
       </div>
 
       <div class="dialog-footer">
-        <div class="preset-section">
-          <label>Presets:</label>
-          <select v-model="selectedPreset" @change="applyPreset" class="select-input">
-            <option value="">Custom</option>
-            <option value="webOptimized">Web Optimized GIF</option>
-            <option value="highQualityVideo">High Quality Video</option>
-            <option value="smallGif">Small GIF</option>
-            <option value="twitterGif">Twitter GIF</option>
-            <option value="discordEmote">Discord Emote</option>
-            <option value="spriteSheet">Sprite Sheet (PNG)</option>
-            <option value="frameSequence">Frame Sequence (ZIP)</option>
-          </select>
+        <div class="footer-left">
+          <div class="preset-section">
+            <label>Preset:</label>
+            <select v-model="selectedPreset" @change="applyPreset" class="select-input">
+              <option value="">Custom</option>
+              <option value="webOptimized">Web Optimized GIF</option>
+              <option value="highQualityVideo">High Quality Video</option>
+              <option value="smallGif">Small GIF</option>
+              <option value="twitterGif">Twitter GIF</option>
+              <option value="discordEmote">Discord Emote</option>
+              <option value="spriteSheet">Sprite Sheet (PNG)</option>
+              <option value="frameSequence">Frame Sequence (ZIP)</option>
+            </select>
+          </div>
+          <div class="export-summary">
+            <span>{{ selectedFrameCount }} frames</span>
+            <span class="dot">•</span>
+            <span>{{ outputWidth }}×{{ outputHeight }}</span>
+            <span class="dot">•</span>
+            <span class="format-badge">{{ options.format.toUpperCase() }}</span>
+          </div>
         </div>
         <div class="button-group">
           <button @click="close" class="secondary-btn">Cancel</button>
-          <button @click="exportWithOptions" class="primary-btn">
+          <button @click="exportWithOptions" class="export-btn">
             <Download :size="16" />
             Export
           </button>
@@ -616,6 +628,17 @@ if (options.value.compressionLevel === undefined) {
   justify-content: space-between;
   padding: 16px 20px;
   border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-sideBar-background);
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-icon {
+  color: var(--vscode-button-background);
 }
 
 .dialog-header h2 {
@@ -860,9 +883,16 @@ if (options.value.compressionLevel === undefined) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 14px 20px;
   border-top: 1px solid var(--vscode-panel-border);
-  gap: 12px;
+  background: var(--vscode-sideBar-background);
+  gap: 16px;
+}
+
+.footer-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .preset-section {
@@ -873,11 +903,33 @@ if (options.value.compressionLevel === undefined) {
 }
 
 .preset-section label {
-  font-weight: 600;
+  font-weight: 500;
+  opacity: 0.8;
 }
 
 .preset-section .select-input {
-  min-width: 180px;
+  min-width: 160px;
+}
+
+.export-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.export-summary .dot {
+  opacity: 0.4;
+}
+
+.export-summary .format-badge {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 10px;
 }
 
 .button-group {
@@ -885,8 +937,7 @@ if (options.value.compressionLevel === undefined) {
   gap: 8px;
 }
 
-.secondary-btn,
-.primary-btn {
+.secondary-btn {
   padding: 8px 16px;
   border-radius: 4px;
   cursor: pointer;
@@ -896,9 +947,6 @@ if (options.value.compressionLevel === undefined) {
   align-items: center;
   gap: 6px;
   transition: all 0.2s;
-}
-
-.secondary-btn {
   background: var(--vscode-button-secondaryBackground);
   border: 1px solid var(--vscode-button-border);
   color: var(--vscode-button-secondaryForeground);
@@ -908,13 +956,29 @@ if (options.value.compressionLevel === undefined) {
   background: var(--vscode-button-secondaryHoverBackground);
 }
 
-.primary-btn {
-  background: var(--vscode-button-background);
+.export-btn {
+  padding: 10px 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  background: #22c55e;
   border: none;
-  color: var(--vscode-button-foreground);
+  color: white;
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
 }
 
-.primary-btn:hover {
-  background: var(--vscode-button-hoverBackground);
+.export-btn:hover {
+  background: #16a34a;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+  transform: translateY(-1px);
+}
+
+.export-btn:active {
+  transform: translateY(0);
 }
 </style>

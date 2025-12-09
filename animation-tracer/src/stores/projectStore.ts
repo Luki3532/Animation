@@ -12,6 +12,7 @@ import type {
 } from '../types/project'
 import { AUTO_SAVE_INTERVAL } from '../types/project'
 import { ProjectService } from '../services/projectService'
+import { saveVideoFileHandle, loadVideoFileHandle, clearVideoFileHandle } from '../services/persistenceService'
 import { useDrawingStore } from './drawingStore'
 import { useVideoStore } from './videoStore'
 
@@ -286,10 +287,17 @@ export const useProjectStore = defineStore('project', () => {
     // Build video source reference if we have a video loaded
     let videoSource: VideoSourceReference | undefined
     if (videoStore.hasVideo && videoStore.state.file) {
+      // Fresh video file available - build from it
       videoSource = {
         filename: videoStore.state.file.name,
         fileSize: videoStore.state.file.size,
         duration: videoStore.state.duration
+      }
+    } else if (videoStore.hasVideo && videoSourceRef.value) {
+      // Reconnected video or loaded from project - use stored reference
+      videoSource = {
+        ...videoSourceRef.value,
+        duration: videoStore.state.duration || videoSourceRef.value.duration
       }
     }
     
@@ -425,18 +433,36 @@ export const useProjectStore = defineStore('project', () => {
         videoSourceRef.value = null
         toast(`Loaded: ${manifest.name} (with video)`)
       } else if (projectData.video.videoSource && !projectData.video.isEmptyProject) {
-        // .lucas format - need to reconnect video
-        needsVideoReconnect.value = true
+        // .lucas format - try to auto-reconnect video first
         videoSourceRef.value = projectData.video.videoSource
-        showVideoReconnectDialog.value = true
         
-        // Create empty project with saved dimensions while waiting for video
-        videoStore.createEmptyProject(
-          projectData.video.width || 512,
-          projectData.video.height || 512,
-          projectData.video.frameCount || 100,
-          projectData.video.fps || 24
-        )
+        // Try to load stored video file handle from IndexedDB
+        const storedHandle = await loadVideoFileHandle()
+        if (storedHandle) {
+          ProjectService.setVideoFileHandle(storedHandle as any)
+        }
+        
+        // Try auto-reconnect using stored handle
+        const autoFile = await ProjectService.tryGetVideoFromHandle()
+        if (autoFile) {
+          // Auto-reconnect succeeded!
+          videoStore.loadVideo(autoFile)
+          needsVideoReconnect.value = false
+          showVideoReconnectDialog.value = false
+          toast(`Loaded: ${manifest.name} (video auto-connected)`)
+        } else {
+          // Auto-reconnect failed, show dialog
+          needsVideoReconnect.value = true
+          showVideoReconnectDialog.value = true
+          
+          // Create empty project with saved dimensions while waiting for video
+          videoStore.createEmptyProject(
+            projectData.video.width || 512,
+            projectData.video.height || 512,
+            projectData.video.frameCount || 100,
+            projectData.video.fps || 24
+          )
+        }
       } else {
         // Empty project
         videoStore.createEmptyProject(
@@ -483,7 +509,7 @@ export const useProjectStore = defineStore('project', () => {
   }
   
   // Reset project state (for new project)
-  function resetProject() {
+  async function resetProject() {
     projectName.value = 'Untitled'
     projectPath.value = ''
     projectFormat.value = 'lucas'
@@ -496,17 +522,54 @@ export const useProjectStore = defineStore('project', () => {
     showVideoReconnectDialog.value = false
     stopAutoSaveTimer()
     ProjectService.setFileHandle(null)
+    ProjectService.setVideoFileHandle(null)
+    await clearVideoFileHandle()
+  }
+  
+  // Load a video file and set up the source reference for saving
+  async function loadVideoFile(file: File, handle?: unknown) {
+    const videoStore = useVideoStore()
+    
+    // Load the video in video store
+    videoStore.loadVideo(file)
+    
+    // Save handle to IndexedDB for persistence across browser sessions
+    if (handle) {
+      ProjectService.setVideoFileHandle(handle as any)
+      await saveVideoFileHandle(handle)
+    }
+    
+    // Set up the source reference so it's saved with the project
+    videoSourceRef.value = {
+      filename: file.name,
+      fileSize: file.size,
+      duration: 0, // Will be updated when video metadata loads
+      mimeType: file.type
+    }
+    
+    // Clear any pending reconnect state
+    needsVideoReconnect.value = false
+    showVideoReconnectDialog.value = false
   }
   
   // Browse for video to reconnect
   async function browseForVideo(): Promise<boolean> {
     const videoStore = useVideoStore()
     
-    const file = await ProjectService.openVideoFilePicker()
-    if (!file) return false
+    // Use File System Access API to get handle for future auto-reconnect
+    const result = await ProjectService.openVideoFilePickerWithHandle()
+    if (!result) return false
+    
+    const { file, handle } = result
     
     // Load the video
     videoStore.loadVideo(file)
+    
+    // Save handle to IndexedDB for persistence across browser sessions
+    if (handle) {
+      ProjectService.setVideoFileHandle(handle)
+      await saveVideoFileHandle(handle)
+    }
     
     // Clear reconnect state
     needsVideoReconnect.value = false
@@ -588,6 +651,7 @@ export const useProjectStore = defineStore('project', () => {
     saveProject,
     loadProject,
     resetProject,
+    loadVideoFile,
     markDirty,
     toggleCheckpointPanel,
     toast,

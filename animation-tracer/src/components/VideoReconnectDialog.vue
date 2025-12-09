@@ -22,7 +22,7 @@
           </div>
           
           <p class="hint">
-            Use <code>.fluf</code> format to embed videos in your project.
+            Tip: Use <code>.fluf</code> format to embed videos, or the video will auto-connect next time if the browser remembers it.
           </p>
         </div>
       </div>
