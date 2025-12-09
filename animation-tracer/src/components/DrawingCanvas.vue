@@ -186,6 +186,7 @@ function calculateFitToWidthZoom(): number {
   if (!containerRef.value) return 1
   const container = containerRef.value
   const canvasWidth = videoStore.state.width || drawingStore.canvasSize.width
+  console.log('calculateFitToWidthZoom - container width:', container.clientWidth, 'canvasWidth:', canvasWidth, 'videoStore.state.width:', videoStore.state.width, 'drawingStore.canvasSize.width:', drawingStore.canvasSize.width)
   // Add some padding (20px on each side)
   const availableWidth = container.clientWidth - 40
   return availableWidth / canvasWidth
@@ -202,10 +203,18 @@ function fitToWidth() {
 
 // Force fit to screen (ignores userAdjustedViewport, callable from outside)
 function fitToScreen() {
+  console.log('DrawingCanvas fitToScreen called')
+  console.log('containerRef:', containerRef.value)
+  console.log('fabricCanvas:', fabricCanvas)
+  // Reset the flag first via the store method
+  drawingStore.resetViewport()
+  // Then calculate and set the proper fit-to-width zoom
   const zoom = calculateFitToWidthZoom()
+  console.log('Calculated zoom:', zoom)
   drawingStore.setViewportWithoutUserFlag(zoom, 0, 0)
-  drawingStore.userAdjustedViewport = false
+  console.log('Viewport after set:', drawingStore.viewport)
   applyViewportTransform()
+  console.log('applyViewportTransform done')
 }
 
 // Apply current viewport transform to canvas elements
