@@ -31,6 +31,19 @@
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </button>
+        
+        <!-- Auto-save status indicator -->
+        <span 
+          v-if="videoStore.hasProject" 
+          class="auto-save-status"
+          :class="projectStore.autoSaveStatus"
+          :title="projectStore.hasFileHandle ? `Auto-saving to ${projectStore.projectPath}` : 'Click Save to enable auto-save'"
+        >
+          <svg v-if="projectStore.autoSaveStatus === 'saving'" class="spin" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+          <svg v-else-if="projectStore.autoSaveStatus === 'saved'" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          <svg v-else-if="projectStore.autoSaveStatus === 'error'" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {{ projectStore.autoSaveStatusText }}
+        </span>
       </div>
       
       <nav class="header-nav" v-if="videoStore.hasProject">
@@ -511,6 +524,52 @@ onUnmounted(() => {
 
 .history-btn {
   padding: calc(5px * var(--ui-scale, 1));
+}
+
+/* Auto-save status indicator */
+.auto-save-status {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale, 1));
+  font-size: calc(11px * var(--ui-scale, 1));
+  color: #888;
+  padding: calc(4px * var(--ui-scale, 1)) calc(8px * var(--ui-scale, 1));
+  border-radius: calc(4px * var(--ui-scale, 1));
+  background: rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+
+.auto-save-status.saving {
+  color: #ffa500;
+}
+
+.auto-save-status.saved {
+  color: #4ade80;
+}
+
+.auto-save-status.error {
+  color: #f87171;
+}
+
+.auto-save-status.idle {
+  color: #888;
+}
+
+.auto-save-status.no-handle {
+  color: #666;
+}
+
+.auto-save-status svg {
+  flex-shrink: 0;
+}
+
+.auto-save-status .spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Toast notification */

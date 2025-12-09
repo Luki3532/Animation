@@ -135,9 +135,11 @@ import { CANVAS_SIZES } from '../types/drawing'
 import type { CanvasSize } from '../types/drawing'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
+import { useProjectStore } from '../stores/projectStore'
 
 const videoStore = useVideoStore()
 const drawingStore = useDrawingStore()
+const projectStore = useProjectStore()
 
 defineProps<{
   isOpen: boolean
@@ -176,9 +178,12 @@ function close() {
   emit('close')
 }
 
-function createProject() {
+async function createProject() {
   // Clear any existing drawings when creating new project
   drawingStore.clearAllDrawings()
+  
+  // Reset project state
+  projectStore.resetProject()
   
   // Create the empty project
   videoStore.createEmptyProject(
@@ -197,6 +202,12 @@ function createProject() {
   
   emit('created')
   close()
+  
+  // Prompt for save location (auto-save will be enabled)
+  // Use setTimeout to let the dialog close first
+  setTimeout(async () => {
+    await projectStore.pickSaveLocation('Untitled')
+  }, 100)
 }
 </script>
 

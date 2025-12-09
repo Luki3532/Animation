@@ -4,9 +4,12 @@ import type { FrameDrawing } from '../types/drawing'
 import type { 
   ProjectCheckpoint, 
   ProjectCheckpointFull,
+  AutoSaveStatus,
+  VideoSourceReference,
   VideoSettings,
   DrawingSettings
 } from '../types/project'
+import { AUTO_SAVE_INTERVAL } from '../types/project'
 import { ProjectService } from '../services/projectService'
 import { useDrawingStore } from './drawingStore'
 import { useVideoStore } from './videoStore'
@@ -27,11 +30,43 @@ export const useProjectStore = defineStore('project', () => {
   const lastToastMessage = ref<string>('')
   const showToast = ref<boolean>(false)
   
+  // Auto-save state
+  const autoSaveStatus = ref<AutoSaveStatus>('no-handle')
+  const lastAutoSave = ref<Date | null>(null)
+  const autoSaveTimer = ref<number | null>(null)
+  const hasFileHandle = ref<boolean>(false)
+  
+  // Video reconnection state
+  const needsVideoReconnect = ref<boolean>(false)
+  const videoSourceRef = ref<VideoSourceReference | null>(null)
+  
   // Computed
   const hasCheckpoints = computed(() => checkpoints.value.length > 0)
   const checkpointCount = computed(() => checkpoints.value.length)
   const hasUnsavedChanges = computed(() => isDirty.value)
   const isProjectSaved = computed(() => projectPath.value !== '')
+  const supportsAutoSave = computed(() => ProjectService.supportsFileSystemAccess())
+  const autoSaveStatusText = computed(() => {
+    switch (autoSaveStatus.value) {
+      case 'saving': return 'Saving...'
+      case 'saved': return lastAutoSave.value 
+        ? `Saved ${formatTimeAgo(lastAutoSave.value)}` 
+        : 'Saved'
+      case 'error': return 'Save failed'
+      case 'idle': return 'Auto-save on'
+      case 'no-handle': return hasFileHandle.value ? '' : 'Not saved'
+    }
+  })
+  
+  // Format time ago helper
+  function formatTimeAgo(date: Date): string {
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+    if (seconds < 60) return 'just now'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ago`
+  }
   
   // Toast helper
   function toast(message: string, duration: number = 2000) {
@@ -40,6 +75,96 @@ export const useProjectStore = defineStore('project', () => {
     setTimeout(() => {
       showToast.value = false
     }, duration)
+  }
+  
+  // Pick save location for new project
+  async function pickSaveLocation(suggestedName?: string): Promise<boolean> {
+    const name = suggestedName || projectName.value
+    const handle = await ProjectService.pickSaveLocation(name.replace(/[^a-z0-9_\-]/gi, '_'))
+    
+    if (handle) {
+      hasFileHandle.value = true
+      projectName.value = handle.name.replace('.lucas', '')
+      projectPath.value = handle.name
+      autoSaveStatus.value = 'idle'
+      
+      // Do initial save
+      await performAutoSave()
+      
+      // Start auto-save timer
+      startAutoSaveTimer()
+      
+      toast(`Auto-save enabled: ${handle.name}`)
+      return true
+    }
+    return false
+  }
+  
+  // Start auto-save timer
+  function startAutoSaveTimer() {
+    stopAutoSaveTimer()
+    autoSaveTimer.value = window.setInterval(() => {
+      if (isDirty.value && hasFileHandle.value) {
+        performAutoSave()
+      }
+    }, AUTO_SAVE_INTERVAL)
+  }
+  
+  // Stop auto-save timer
+  function stopAutoSaveTimer() {
+    if (autoSaveTimer.value !== null) {
+      clearInterval(autoSaveTimer.value)
+      autoSaveTimer.value = null
+    }
+  }
+  
+  // Perform auto-save
+  async function performAutoSave(): Promise<boolean> {
+    if (!hasFileHandle.value) return false
+    
+    const drawingStore = useDrawingStore()
+    
+    autoSaveStatus.value = 'saving'
+    
+    try {
+      const { video, drawing, currentFrame } = getProjectData()
+      
+      const blob = await ProjectService.saveProject(
+        projectName.value,
+        video,
+        drawing,
+        currentFrame,
+        drawingStore.frameDrawings,
+        checkpoints.value
+      )
+      
+      const success = await ProjectService.saveToHandle(blob)
+      
+      if (success) {
+        isDirty.value = false
+        lastAutoSave.value = new Date()
+        autoSaveStatus.value = 'saved'
+        return true
+      } else {
+        autoSaveStatus.value = 'error'
+        hasFileHandle.value = false
+        toast('Auto-save failed - file access lost')
+        return false
+      }
+    } catch (error) {
+      console.error('Auto-save failed:', error)
+      autoSaveStatus.value = 'error'
+      return false
+    }
+  }
+  
+  // Mark project as dirty and trigger save consideration
+  function markDirty() {
+    isDirty.value = true
+    // Update status to show unsaved changes
+    if (autoSaveStatus.value === 'saved') {
+      autoSaveStatus.value = 'idle'
+    }
   }
   
   // Create a new checkpoint
@@ -69,7 +194,7 @@ export const useProjectStore = defineStore('project', () => {
     }
     
     checkpoints.value.push(checkpoint)
-    isDirty.value = true
+    markDirty()
     
     toast(`✓ ${name}`)
     
@@ -96,7 +221,7 @@ export const useProjectStore = defineStore('project', () => {
       })
     }
     
-    isDirty.value = true
+    markDirty()
     toast(`Restored: ${checkpoint.name}`)
     
     return true
@@ -148,6 +273,16 @@ export const useProjectStore = defineStore('project', () => {
     const drawingStore = useDrawingStore()
     const videoStore = useVideoStore()
     
+    // Build video source reference if we have a video loaded
+    let videoSource: VideoSourceReference | undefined
+    if (videoStore.hasVideo && videoStore.state.file) {
+      videoSource = {
+        filename: videoStore.state.file.name,
+        fileSize: videoStore.state.file.size,
+        duration: videoStore.state.duration
+      }
+    }
+    
     return {
       video: {
         fps: videoStore.state.fps,
@@ -158,7 +293,8 @@ export const useProjectStore = defineStore('project', () => {
         cropRight: videoStore.state.cropRight,
         cropBottom: videoStore.state.cropBottom,
         cropLeft: videoStore.state.cropLeft,
-        isEmptyProject: videoStore.state.isEmptyProject
+        isEmptyProject: videoStore.state.isEmptyProject,
+        videoSource
       },
       drawing: {
         canvasSize: drawingStore.canvasSize,
@@ -222,11 +358,14 @@ export const useProjectStore = defineStore('project', () => {
     isLoading.value = true
     
     try {
-      const file = await ProjectService.openFilePicker()
-      if (!file) {
+      // Try to use File System Access API for handle retention
+      const result = await ProjectService.openFilePickerWithHandle()
+      if (!result) {
         isLoading.value = false
         return false
       }
+      
+      const { file, handle } = result
       
       const { manifest, projectData, frames, checkpoints: loadedCheckpoints } = 
         await ProjectService.loadProject(file)
@@ -248,13 +387,35 @@ export const useProjectStore = defineStore('project', () => {
       drawingStore.canvasSize = projectData.drawing.canvasSize
       drawingStore.toolSettings = projectData.drawing.toolSettings
       
-      // Load video settings (create empty project with saved dimensions)
-      videoStore.createEmptyProject(
-        projectData.video.width || 512,
-        projectData.video.height || 512,
-        projectData.video.frameCount || 100,
-        projectData.video.fps || 24
-      )
+      // Load video settings
+      // Check if we have a video source to reconnect
+      if (projectData.video.videoSource && !projectData.video.isEmptyProject) {
+        // Set flag for video reconnection needed
+        needsVideoReconnect.value = true
+        videoSourceRef.value = projectData.video.videoSource
+        
+        // For now, create as empty project with saved dimensions
+        // User will be prompted to reconnect video
+        videoStore.createEmptyProject(
+          projectData.video.width || 512,
+          projectData.video.height || 512,
+          projectData.video.frameCount || 100,
+          projectData.video.fps || 24
+        )
+        
+        // Show reconnect prompt after a short delay
+        setTimeout(() => {
+          toast(`Video needed: ${projectData.video.videoSource?.filename}`, 5000)
+        }, 500)
+      } else {
+        // Create empty project with saved dimensions
+        videoStore.createEmptyProject(
+          projectData.video.width || 512,
+          projectData.video.height || 512,
+          projectData.video.frameCount || 100,
+          projectData.video.fps || 24
+        )
+      }
       
       // Apply crop settings
       videoStore.state.cropTop = projectData.video.cropTop
@@ -269,6 +430,13 @@ export const useProjectStore = defineStore('project', () => {
       checkpoints.value = loadedCheckpoints
       
       isDirty.value = false
+      
+      // Enable auto-save if we have a file handle
+      if (handle) {
+        hasFileHandle.value = true
+        autoSaveStatus.value = 'saved'
+        startAutoSaveTimer()
+      }
       
       toast(`Loaded: ${manifest.name}`)
       
@@ -288,11 +456,10 @@ export const useProjectStore = defineStore('project', () => {
     projectPath.value = ''
     checkpoints.value = []
     isDirty.value = false
-  }
-  
-  // Mark project as dirty (has changes)
-  function markDirty() {
-    isDirty.value = true
+    hasFileHandle.value = false
+    autoSaveStatus.value = 'no-handle'
+    stopAutoSaveTimer()
+    ProjectService.setFileHandle(null)
   }
   
   // Toggle checkpoint panel
@@ -312,11 +479,20 @@ export const useProjectStore = defineStore('project', () => {
     lastToastMessage,
     showToast,
     
+    // Auto-save state
+    autoSaveStatus,
+    lastAutoSave,
+    hasFileHandle,
+    needsVideoReconnect,
+    videoSourceRef,
+    
     // Computed
     hasCheckpoints,
     checkpointCount,
     hasUnsavedChanges,
     isProjectSaved,
+    supportsAutoSave,
+    autoSaveStatusText,
     
     // Actions
     createCheckpoint,
@@ -329,6 +505,12 @@ export const useProjectStore = defineStore('project', () => {
     resetProject,
     markDirty,
     toggleCheckpointPanel,
-    toast
+    toast,
+    
+    // Auto-save actions
+    pickSaveLocation,
+    performAutoSave,
+    startAutoSaveTimer,
+    stopAutoSaveTimer
   }
 })

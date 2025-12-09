@@ -12,9 +12,141 @@ import type {
 import { PROJECT_FORMAT_VERSION } from '../types/project'
 
 /**
+ * Type declarations for File System Access API
+ */
+interface FileSystemFileHandle {
+  name: string
+  getFile(): Promise<File>
+  createWritable(): Promise<FileSystemWritableFileStream>
+}
+
+interface FileSystemWritableFileStream extends WritableStream {
+  write(data: BufferSource | Blob | string): Promise<void>
+  close(): Promise<void>
+}
+
+interface SaveFilePickerOptions {
+  suggestedName?: string
+  types?: Array<{
+    description: string
+    accept: Record<string, string[]>
+  }>
+}
+
+declare global {
+  interface Window {
+    showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>
+    showOpenFilePicker?: (options?: { types?: SaveFilePickerOptions['types']; multiple?: boolean }) => Promise<FileSystemFileHandle[]>
+  }
+}
+
+/**
  * Service for saving and loading .lucas project files
  */
 export class ProjectService {
+  /** Stored file handle for auto-save */
+  private static fileHandle: FileSystemFileHandle | null = null
+
+  /**
+   * Check if File System Access API is supported
+   */
+  static supportsFileSystemAccess(): boolean {
+    return 'showSaveFilePicker' in window
+  }
+
+  /**
+   * Get the current file handle
+   */
+  static getFileHandle(): FileSystemFileHandle | null {
+    return this.fileHandle
+  }
+
+  /**
+   * Set the file handle (for when loading a project)
+   */
+  static setFileHandle(handle: FileSystemFileHandle | null): void {
+    this.fileHandle = handle
+  }
+
+  /**
+   * Pick a save location using File System Access API
+   */
+  static async pickSaveLocation(suggestedName: string): Promise<FileSystemFileHandle | null> {
+    if (!this.supportsFileSystemAccess()) {
+      console.warn('File System Access API not supported')
+      return null
+    }
+
+    try {
+      const handle = await window.showSaveFilePicker!({
+        suggestedName: `${suggestedName}.lucas`,
+        types: [{
+          description: 'Lucas Project File',
+          accept: { 'application/zip': ['.lucas'] }
+        }]
+      })
+      this.fileHandle = handle
+      return handle
+    } catch (error) {
+      // User cancelled or error
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Failed to pick save location:', error)
+      }
+      return null
+    }
+  }
+
+  /**
+   * Save directly to file handle (for auto-save)
+   */
+  static async saveToHandle(blob: Blob): Promise<boolean> {
+    if (!this.fileHandle) {
+      console.error('No file handle available for saving')
+      return false
+    }
+
+    try {
+      const writable = await this.fileHandle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+      return true
+    } catch (error) {
+      console.error('Failed to save to file handle:', error)
+      // Handle might be stale, clear it
+      this.fileHandle = null
+      return false
+    }
+  }
+
+  /**
+   * Open file picker with File System Access API (returns handle for future saves)
+   */
+  static async openFilePickerWithHandle(): Promise<{ file: File; handle: FileSystemFileHandle } | null> {
+    if (!this.supportsFileSystemAccess() || !window.showOpenFilePicker) {
+      // Fall back to traditional file picker
+      const file = await this.openFilePicker()
+      return file ? { file, handle: null as unknown as FileSystemFileHandle } : null
+    }
+
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{
+          description: 'Lucas Project File',
+          accept: { 'application/zip': ['.lucas'] }
+        }],
+        multiple: false
+      })
+      const file = await handle.getFile()
+      this.fileHandle = handle
+      return { file, handle }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        console.error('Failed to open file picker:', error)
+      }
+      return null
+    }
+  }
+
   /**
    * Generate a unique checkpoint ID
    */

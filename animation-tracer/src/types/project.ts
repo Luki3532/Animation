@@ -3,12 +3,17 @@ import type { FrameDrawing, ToolSettings, CanvasSize } from './drawing'
 /**
  * Project file format version
  */
-export const PROJECT_FORMAT_VERSION = '1.0.0'
+export const PROJECT_FORMAT_VERSION = '1.1.0'
 
 /**
  * File extension for project files
  */
 export const PROJECT_FILE_EXTENSION = '.lucas'
+
+/**
+ * Auto-save interval in milliseconds (30 seconds)
+ */
+export const AUTO_SAVE_INTERVAL = 30000
 
 /**
  * Manifest stored in the project file
@@ -19,6 +24,18 @@ export interface ProjectManifest {
   created: string
   modified: string
   name: string
+}
+
+/**
+ * Video source reference (path to reconnect on load)
+ */
+export interface VideoSourceReference {
+  /** Original filename of the video */
+  filename: string
+  /** File size in bytes for validation */
+  fileSize: number
+  /** Duration in seconds for validation */
+  duration: number
 }
 
 /**
@@ -34,7 +51,14 @@ export interface VideoSettings {
   cropBottom: number
   cropLeft: number
   isEmptyProject: boolean
+  /** Video source reference for reconnection */
+  videoSource?: VideoSourceReference
 }
+
+/**
+ * Auto-save status
+ */
+export type AutoSaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'no-handle'
 
 /**
  * Drawing state to serialize

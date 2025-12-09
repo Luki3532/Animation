@@ -87,10 +87,12 @@ import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
+import { useProjectStore } from '../stores/projectStore'
 import NewProjectDialog from './NewProjectDialog.vue'
 
 const videoStore = useVideoStore()
 const drawingStore = useDrawingStore()
+const projectStore = useProjectStore()
 
 const videoElement = ref<HTMLVideoElement | null>(null)
 const frameCanvas = ref<HTMLCanvasElement | null>(null)
@@ -144,7 +146,13 @@ function handleDrop(e: DragEvent) {
   if (files && files.length > 0) {
     const file = files[0]
     if (file.type.startsWith('video/')) {
+      // Reset project and load video
+      projectStore.resetProject()
+      drawingStore.clearAllDrawings()
       videoStore.loadVideo(file)
+      
+      // Prompt for save location after video loads
+      promptSaveLocationForVideo(file.name)
     }
   }
 }
@@ -152,8 +160,26 @@ function handleDrop(e: DragEvent) {
 function handleFileSelect(e: Event) {
   const input = e.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
-    videoStore.loadVideo(input.files[0])
+    const file = input.files[0]
+    // Reset project and load video
+    projectStore.resetProject()
+    drawingStore.clearAllDrawings()
+    videoStore.loadVideo(file)
+    
+    // Prompt for save location after video loads
+    promptSaveLocationForVideo(file.name)
   }
+}
+
+// Helper to prompt save location with video filename as suggestion
+function promptSaveLocationForVideo(videoFilename: string) {
+  // Extract name without extension
+  const suggestedName = videoFilename.replace(/\.[^.]+$/, '')
+  
+  // Wait for video to fully load then prompt
+  setTimeout(async () => {
+    await projectStore.pickSaveLocation(suggestedName)
+  }, 500)
 }
 
 // Reopen last video - opens file picker for user to select the file
