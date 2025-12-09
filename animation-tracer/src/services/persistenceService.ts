@@ -62,7 +62,7 @@ export async function loadDrawingData(): Promise<SavedDrawingData | null> {
     
     return {
       frameDrawings: frameDrawings || [],
-      toolSettings: toolSettings || { tool: 'pen', color: '#000000', brushSize: 5, opacity: 1 },
+      toolSettings: toolSettings || { tool: 'pen', color: '#000000', brushSize: 5, opacity: 1, brushType: 'round' as const },
       canvasSize: canvasSize || { width: 128, height: 128, label: '128×128' }
     }
   } catch (error) {
@@ -83,12 +83,14 @@ export interface SavedSettingsData {
   uiScale: number
 }
 
-export interface SavedKeyMappings {
+export interface SavedKeyMapping {
   action: string
   label: string
   key: string | null
   mouseButton: number | null
-}[]
+}
+
+export type SavedKeyMappings = SavedKeyMapping[]
 
 export interface SavedOnionSkinSettings {
   enabled: boolean

@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { Canvas, PencilBrush, SprayBrush, Circle, Rect, Line, Polygon, Path, FabricObject } from 'fabric'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useVideoStore } from '../stores/videoStore'
@@ -194,8 +194,9 @@ function initCanvas() {
   // Override the _finalizeAndAddPath to prevent path repositioning
   const originalFinalize = (brush as any)._finalizeAndAddPath.bind(brush)
   ;(brush as any)._finalizeAndAddPath = function() {
-    // Store points before finalization
-    const points = this._points ? [...this._points] : []
+    // Store points before finalization (unused but kept for potential debugging)
+    const _points = this._points ? [...this._points] : []
+    void _points // Suppress unused variable warning
     
     // Call original but we'll fix the result
     originalFinalize()
@@ -473,7 +474,7 @@ function handleContainerMouseMove(e: MouseEvent) {
   }
 }
 
-function handleContainerMouseUp(e: MouseEvent) {
+function handleContainerMouseUp(_e: MouseEvent) {
   if (isPanning) {
     isPanning = false
     isPanningRef.value = false
@@ -1042,8 +1043,8 @@ watch(
   }
 )
 
-// Smoothing state for real-time line stabilization
-let smoothingBuffer: { x: number; y: number }[] = []
+// Smoothing state for real-time line stabilization (reserved for future use)
+// let smoothingBuffer: { x: number; y: number }[] = []
 
 // Smooth a path after creation - preserves start/end points to prevent visual shifting
 function smoothPath(path: Path) {

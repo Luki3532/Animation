@@ -2,6 +2,37 @@
   <div class="app" :style="{ '--ui-scale': settingsStore.uiScale }">
     <header class="app-header">
       <div class="logo">FrameForge</div>
+      
+      <!-- File/Project controls (always visible) -->
+      <div class="file-controls">
+        <button class="file-btn" @click="projectStore.loadProject()" title="Open Project (Ctrl+O)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Open
+        </button>
+        <button class="file-btn" @click="projectStore.saveProject()" :disabled="!videoStore.hasProject" title="Save Project (Ctrl+S)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save
+        </button>
+        <button 
+          class="file-btn checkpoint-btn" 
+          @click="projectStore.createCheckpoint()" 
+          :disabled="!videoStore.hasProject" 
+          title="Create Checkpoint (Ctrl+Q)"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m16.24 7.76-2.83 2.83"/><path d="M22 12h-4"/><path d="m16.24 16.24-2.83-2.83"/><path d="M12 22v-4"/><path d="m7.76 16.24 2.83-2.83"/><path d="M2 12h4"/><path d="m7.76 7.76 2.83 2.83"/></svg>
+          <span v-if="projectStore.checkpointCount > 0" class="checkpoint-badge">{{ projectStore.checkpointCount }}</span>
+        </button>
+        <button 
+          class="file-btn history-btn" 
+          @click="projectStore.toggleCheckpointPanel()" 
+          :disabled="!projectStore.hasCheckpoints"
+          :class="{ active: projectStore.showCheckpointPanel }"
+          title="View Checkpoints"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>
+      </div>
+      
       <nav class="header-nav" v-if="videoStore.hasProject">
         <template v-if="videoStore.hasVideo">
           <label class="toggle-ref">
@@ -28,6 +59,16 @@
         </button>
       </nav>
     </header>
+    
+    <!-- Toast notification -->
+    <Transition name="toast">
+      <div v-if="projectStore.showToast" class="toast-notification">
+        {{ projectStore.lastToastMessage }}
+      </div>
+    </Transition>
+    
+    <!-- Checkpoint Panel -->
+    <CheckpointPanel v-if="projectStore.showCheckpointPanel" />
 
     <!-- Crop Panel (collapsible) -->
     <div v-if="showCropPanel && videoStore.hasVideo" class="crop-panel">
@@ -155,13 +196,16 @@ import ToolPalette from './components/ToolPalette.vue'
 import ExportPanel from './components/ExportPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import Timeline from './components/Timeline.vue'
+import CheckpointPanel from './components/CheckpointPanel.vue'
 import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
 import { useSettingsStore } from './stores/settingsStore'
+import { useProjectStore } from './stores/projectStore'
 
 const videoStore = useVideoStore()
 const drawingStore = useDrawingStore()
 const settingsStore = useSettingsStore()
+const projectStore = useProjectStore()
 
 const videoPlayer = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const drawingCanvas = ref<InstanceType<typeof DrawingCanvas> | null>(null)
@@ -278,6 +322,31 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   if (settingsStore.remapMode) return
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
   
+  // Handle Ctrl+Q for checkpoint
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
+    e.preventDefault()
+    if (videoStore.hasProject) {
+      projectStore.createCheckpoint()
+    }
+    return
+  }
+  
+  // Handle Ctrl+S for save project
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    if (videoStore.hasProject) {
+      projectStore.saveProject()
+    }
+    return
+  }
+  
+  // Handle Ctrl+O for open project
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+    e.preventDefault()
+    projectStore.loadProject()
+    return
+  }
+  
   // Handle Ctrl+Z and Ctrl+Y directly for undo/redo
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault()
@@ -364,6 +433,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #2a2a2a;
+  gap: calc(16px * var(--ui-scale, 1));
 }
 
 .logo {
@@ -373,10 +443,109 @@ onUnmounted(() => {
   color: #fff;
 }
 
+/* File/Project controls */
+.file-controls {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale, 1));
+  margin-left: calc(16px * var(--ui-scale, 1));
+}
+
+.file-btn {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale, 1));
+  padding: calc(5px * var(--ui-scale, 1)) calc(8px * var(--ui-scale, 1));
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: calc(4px * var(--ui-scale, 1));
+  color: #aaa;
+  font-size: calc(11px * var(--ui-scale, 1));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.file-btn:hover:not(:disabled) {
+  background: #333;
+  color: #fff;
+  border-color: #444;
+}
+
+.file-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.file-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.checkpoint-btn {
+  position: relative;
+  background: #2a3a2a;
+  border-color: #3a4a3a;
+}
+
+.checkpoint-btn:hover:not(:disabled) {
+  background: #3a5a3a;
+  border-color: #4a6a4a;
+}
+
+.checkpoint-badge {
+  position: absolute;
+  top: calc(-4px * var(--ui-scale, 1));
+  right: calc(-4px * var(--ui-scale, 1));
+  background: var(--accent);
+  color: #fff;
+  font-size: calc(9px * var(--ui-scale, 1));
+  min-width: calc(14px * var(--ui-scale, 1));
+  height: calc(14px * var(--ui-scale, 1));
+  border-radius: calc(7px * var(--ui-scale, 1));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.history-btn {
+  padding: calc(5px * var(--ui-scale, 1));
+}
+
+/* Toast notification */
+.toast-notification {
+  position: fixed;
+  top: calc(52px * var(--ui-scale, 1));
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2a3a2a;
+  color: #8f8;
+  padding: calc(8px * var(--ui-scale, 1)) calc(16px * var(--ui-scale, 1));
+  border-radius: calc(4px * var(--ui-scale, 1));
+  font-size: calc(12px * var(--ui-scale, 1));
+  font-weight: 500;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  border: 1px solid #3a5a3a;
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.2s ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
+}
+
 .header-nav {
   display: flex;
   align-items: center;
   gap: calc(16px * var(--ui-scale, 1));
+  margin-left: auto;
 }
 
 .toggle-ref {

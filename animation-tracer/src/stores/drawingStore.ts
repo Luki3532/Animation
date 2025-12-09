@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { FrameDrawing, ToolSettings, CanvasSize, ViewportState, BrushType } from '../types/drawing'
+import type { FrameDrawing, ToolSettings, CanvasSize, ViewportState } from '../types/drawing'
 import { CANVAS_SIZES } from '../types/drawing'
 import { 
   saveDrawingData, 

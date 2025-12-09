@@ -279,7 +279,7 @@ export class ExportService {
       height,
       workerScript: '/gif.worker.js', // We'll need to copy this from node_modules
       dither: options.dithering ? 'FloydSteinberg' : false,
-      transparent: options.transparency ? 0x00000000 : null,
+      transparent: options.transparency ? null : undefined,
       repeat: options.loop ? 0 : -1 // 0 = loop forever, -1 = no loop
     })
 
@@ -313,11 +313,11 @@ export class ExportService {
         resolve()
       })
 
-      gif.on('error', (err: Error) => {
+      try {
+        gif.render()
+      } catch (err) {
         reject(err)
-      })
-
-      gif.render()
+      }
     })
   }
 
@@ -370,7 +370,7 @@ export class ExportService {
         resolve()
       }
 
-      mediaRecorder.onerror = (e) => {
+      mediaRecorder.onerror = () => {
         reject(new Error('MediaRecorder error'))
       }
 
@@ -661,15 +661,15 @@ export class ExportService {
   /**
    * Convert JSON to readable text
    */
-  private static jsonToText(obj: any): string {
+  private static jsonToText(obj: Record<string, unknown>): string {
     let text = 'Export Metadata\n'
     text += '='.repeat(50) + '\n\n'
     
     for (const [key, value] of Object.entries(obj)) {
       const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')
-      if (typeof value === 'object' && !Array.isArray(value)) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
         text += `${label}:\n`
-        for (const [subKey, subValue] of Object.entries(value)) {
+        for (const [subKey, subValue] of Object.entries(value as Record<string, unknown>)) {
           text += `  ${subKey}: ${subValue}\n`
         }
       } else {
