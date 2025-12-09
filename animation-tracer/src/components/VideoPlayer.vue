@@ -46,7 +46,7 @@
     </div>
 
     <!-- Video container - shown when video is loaded -->
-    <div v-else-if="videoStore.hasVideo" class="video-container">
+    <div v-else-if="videoStore.hasVideo" class="video-container" ref="videoContainerRef">
       <video
         ref="videoElement"
         :src="videoStore.state.url"
@@ -58,7 +58,7 @@
       <canvas 
         ref="frameCanvas" 
         class="frame-canvas"
-        :style="cropStyle"
+        :style="frameCanvasStyle"
       />
     </div>
 
@@ -98,6 +98,7 @@ const videoElement = ref<HTMLVideoElement | null>(null)
 const frameCanvas = ref<HTMLCanvasElement | null>(null)
 const emptyCanvas = ref<HTMLCanvasElement | null>(null)
 const emptyContainerRef = ref<HTMLDivElement | null>(null)
+const videoContainerRef = ref<HTMLDivElement | null>(null)
 const isDragging = ref(false)
 const showNewProjectDialog = ref(false)
 
@@ -130,16 +131,44 @@ const emptyCanvasStyle = computed(() => {
   }
 })
 
-// Crop style using CSS clip-path (instant, no processing)
-const cropStyle = computed(() => {
+// Computed style for video frame canvas that uses viewport transform + crop
+const frameCanvasStyle = computed(() => {
+  if (!videoContainerRef.value) return {}
+  
+  const container = videoContainerRef.value
+  const canvasWidth = videoStore.state.width
+  const canvasHeight = videoStore.state.height
+  const zoom = drawingStore.viewport.zoom
+  const panX = drawingStore.viewport.panX
+  const panY = drawingStore.viewport.panY
+  
+  const scaledWidth = canvasWidth * zoom
+  const scaledHeight = canvasHeight * zoom
+  
+  // Center horizontally, position vertically with pan
+  const offsetX = (container.clientWidth - scaledWidth) / 2 + panX
+  const offsetY = (container.clientHeight - scaledHeight) / 2 + panY
+  
+  // Start with viewport transform
+  const style: Record<string, string> = {
+    position: 'absolute',
+    left: `${offsetX}px`,
+    top: `${offsetY}px`,
+    transform: `scale(${zoom})`,
+    transformOrigin: 'top left',
+    width: `${canvasWidth}px`,
+    height: `${canvasHeight}px`,
+  }
+  
+  // Add crop if needed
   const { cropTop, cropRight, cropBottom, cropLeft } = videoStore.state
-  if (cropTop === 0 && cropRight === 0 && cropBottom === 0 && cropLeft === 0) {
-    return {}
+  if (cropTop !== 0 || cropRight !== 0 || cropBottom !== 0 || cropLeft !== 0) {
+    style.clipPath = `inset(${cropTop}% ${cropRight}% ${cropBottom}% ${cropLeft}%)`
   }
-  return {
-    clipPath: `inset(${cropTop}% ${cropRight}% ${cropBottom}% ${cropLeft}%)`
-  }
+  
+  return style
 })
+
 function handleDrop(e: DragEvent) {
   isDragging.value = false
   const files = e.dataTransfer?.files
@@ -472,9 +501,7 @@ defineExpose({
 .video-container {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
 }
 
 .video-container video {
@@ -482,9 +509,11 @@ defineExpose({
 }
 
 .frame-canvas {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  position: absolute;
+  transform-origin: top left;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
 }
 
 .empty-project-container {
