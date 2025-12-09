@@ -103,16 +103,9 @@ export const useVideoStore = defineStore('video', () => {
       state.value.cropBottom = saved.cropBottom
       state.value.cropLeft = saved.cropLeft
       
-      // Restore empty project if it was saved
-      if (saved.isEmptyProject && saved.emptyProjectWidth && saved.emptyProjectHeight && saved.emptyProjectFrameCount) {
-        state.value.isEmptyProject = true
-        state.value.width = saved.emptyProjectWidth
-        state.value.height = saved.emptyProjectHeight
-        state.value.frameCount = saved.emptyProjectFrameCount
-        state.value.duration = saved.emptyProjectFrameCount / saved.fps
-        state.value.currentFrame = Math.min(saved.currentFrame, saved.emptyProjectFrameCount - 1)
-        state.value.isLoaded = true
-      }
+      // NOTE: Empty projects are NOT auto-restored on page reload
+      // User must explicitly create a new project or reopen a video
+      // This ensures the initial prompt is shown on page reload
     }
     isLoaded.value = true
   }
