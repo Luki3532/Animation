@@ -24,6 +24,11 @@ export const useVideoStore = defineStore('video', () => {
     cropLeft: 0
   })
   
+  // Frame synchronization state - ensures video seek completes before drawings load
+  const isSeekingVideo = ref(false)
+  const videoSeekResolvers = ref<Array<() => void>>([])
+  const frameChangeVersion = ref(0) // Increment on each frame change to detect stale operations
+  
   // Last video reference for reopening
   const lastVideoName = ref<string>('')
   const lastVideoPath = ref<string>('')
@@ -127,22 +132,53 @@ export const useVideoStore = defineStore('video', () => {
   }
   
   function setCurrentFrame(frame: number) {
-    state.value.currentFrame = Math.max(0, Math.min(frame, state.value.frameCount - 1))
+    const newFrame = Math.max(0, Math.min(frame, state.value.frameCount - 1))
+    if (newFrame !== state.value.currentFrame) {
+      frameChangeVersion.value++
+      isSeekingVideo.value = true
+      state.value.currentFrame = newFrame
+    }
   }
-  
+
   function nextFrame() {
     if (state.value.currentFrame < state.value.frameCount - 1) {
+      frameChangeVersion.value++
+      isSeekingVideo.value = true
       state.value.currentFrame++
     }
   }
-  
+
   function previousFrame() {
     if (state.value.currentFrame > 0) {
+      frameChangeVersion.value++
+      isSeekingVideo.value = true
       state.value.currentFrame--
     }
   }
-  
-  function setFps(fps: number) {
+
+  // Called by VideoPlayer when video seek operation completes
+  function notifyVideoSeeked() {
+    isSeekingVideo.value = false
+    // Resolve all pending waiters
+    const resolvers = videoSeekResolvers.value
+    videoSeekResolvers.value = []
+    resolvers.forEach(resolve => resolve())
+  }
+
+  // Returns a promise that resolves when video seek is complete
+  function waitForVideoSeek(): Promise<void> {
+    if (!isSeekingVideo.value) {
+      return Promise.resolve()
+    }
+    return new Promise(resolve => {
+      videoSeekResolvers.value.push(resolve)
+    })
+  }
+
+  // Get current frame change version (for stale detection)
+  function getFrameChangeVersion(): number {
+    return frameChangeVersion.value
+  }  function setFps(fps: number) {
     state.value.fps = fps
     state.value.frameCount = Math.floor(state.value.duration * fps)
     // Adjust current frame if it's now out of bounds
@@ -196,6 +232,7 @@ export const useVideoStore = defineStore('video', () => {
     croppedWidth,
     croppedHeight,
     isLoaded,
+    isSeekingVideo,
     initFromStorage,
     applySavedSettings,
     loadVideo,
@@ -206,6 +243,9 @@ export const useVideoStore = defineStore('video', () => {
     setFps,
     setCrop,
     resetCrop,
-    clearVideo
+    clearVideo,
+    notifyVideoSeeked,
+    waitForVideoSeek,
+    getFrameChangeVersion
   }
 })

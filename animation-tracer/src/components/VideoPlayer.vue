@@ -124,6 +124,8 @@ function onVideoLoaded() {
 
 function onSeeked() {
   renderCurrentFrame()
+  // Notify the store that video seek is complete - this allows drawings to load
+  videoStore.notifyVideoSeeked()
 }
 
 function seekToFrame(frame: number) {

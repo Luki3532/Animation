@@ -643,21 +643,38 @@ function saveCurrentState() {
   emit('drawingUpdated')
 }
 
-function loadFrameDrawing() {
+async function loadFrameDrawing() {
   if (!fabricCanvas) return
 
-  const frameDrawing = drawingStore.getFrameDrawing(videoStore.state.currentFrame)
+  // Capture the frame change version to detect if frame changes during async operations
+  const capturedVersion = videoStore.getFrameChangeVersion()
+  const capturedFrame = videoStore.state.currentFrame
+
+  // Wait for video seek to complete before loading the drawing
+  await videoStore.waitForVideoSeek()
+
+  // Check if frame changed while we were waiting
+  if (videoStore.getFrameChangeVersion() !== capturedVersion) {
+    return // Abort - a newer frame change is in progress
+  }
+
+  const frameDrawing = drawingStore.getFrameDrawing(capturedFrame)
 
   fabricCanvas.clear()
 
   if (frameDrawing) {
-    fabricCanvas.loadFromJSON(JSON.parse(frameDrawing.fabricJSON)).then(() => {
+    await fabricCanvas.loadFromJSON(JSON.parse(frameDrawing.fabricJSON))
+    
+    // Verify frame hasn't changed during async load
+    if (videoStore.getFrameChangeVersion() === capturedVersion) {
       fabricCanvas?.renderAll()
-    })
+    }
   }
   
-  // Render onion skins
-  renderOnionSkins()
+  // Only render onion skins if we're still on the same frame
+  if (videoStore.getFrameChangeVersion() === capturedVersion) {
+    renderOnionSkins()
+  }
 }
 
 // Render onion skin overlays from adjacent frames
