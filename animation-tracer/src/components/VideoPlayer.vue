@@ -63,12 +63,13 @@
     </div>
 
     <!-- Empty project canvas - checkerboard background -->
-    <div v-else-if="videoStore.state.isEmptyProject" class="empty-project-container">
+    <div v-else-if="videoStore.state.isEmptyProject" class="empty-project-container" ref="emptyContainerRef">
       <canvas 
         ref="emptyCanvas" 
         class="empty-canvas"
         :width="videoStore.state.width"
         :height="videoStore.state.height"
+        :style="emptyCanvasStyle"
       />
     </div>
 
@@ -85,19 +86,47 @@
 import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
+import { useDrawingStore } from '../stores/drawingStore'
 import NewProjectDialog from './NewProjectDialog.vue'
 
 const videoStore = useVideoStore()
+const drawingStore = useDrawingStore()
 
 const videoElement = ref<HTMLVideoElement | null>(null)
 const frameCanvas = ref<HTMLCanvasElement | null>(null)
 const emptyCanvas = ref<HTMLCanvasElement | null>(null)
+const emptyContainerRef = ref<HTMLDivElement | null>(null)
 const isDragging = ref(false)
 const showNewProjectDialog = ref(false)
 
 const emit = defineEmits<{
   frameReady: [imageData: ImageData]
 }>()
+
+// Computed style for empty canvas that uses viewport transform
+const emptyCanvasStyle = computed(() => {
+  if (!emptyContainerRef.value) return {}
+  
+  const container = emptyContainerRef.value
+  const canvasWidth = videoStore.state.width
+  const canvasHeight = videoStore.state.height
+  const zoom = drawingStore.viewport.zoom
+  const panX = drawingStore.viewport.panX
+  const panY = drawingStore.viewport.panY
+  
+  const scaledWidth = canvasWidth * zoom
+  const scaledHeight = canvasHeight * zoom
+  
+  // Center horizontally, position vertically with pan
+  const offsetX = (container.clientWidth - scaledWidth) / 2 + panX
+  const offsetY = (container.clientHeight - scaledHeight) / 2 + panY
+  
+  return {
+    left: `${offsetX}px`,
+    top: `${offsetY}px`,
+    transform: `scale(${zoom})`,
+  }
+})
 
 // Crop style using CSS clip-path (instant, no processing)
 const cropStyle = computed(() => {
@@ -435,15 +464,15 @@ defineExpose({
 .empty-project-container {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
 }
 
 .empty-canvas {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  position: absolute;
+  transform-origin: top left;
   border: 1px solid #333;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
 }
 </style>

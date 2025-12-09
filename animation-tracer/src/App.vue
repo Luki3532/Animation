@@ -264,13 +264,7 @@ function closeProject() {
 }
 
 function fitToScreen() {
-  console.log('fitToScreen called, drawingCanvas:', drawingCanvas.value)
-  if (drawingCanvas.value) {
-    console.log('Calling fitToScreen on canvas')
-    drawingCanvas.value.fitToScreen()
-  } else {
-    console.log('drawingCanvas ref is null!')
-  }
+  drawingCanvas.value?.fitToScreen()
 }
 
 // Apply video opacity as CSS variable

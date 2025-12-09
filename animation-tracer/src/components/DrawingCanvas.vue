@@ -181,15 +181,22 @@ function initCanvas() {
   fitToWidth()
 }
 
-// Calculate zoom level to fit canvas width to container width
+// Calculate zoom level to fit canvas within container (fit to screen)
 function calculateFitToWidthZoom(): number {
   if (!containerRef.value) return 1
   const container = containerRef.value
   const canvasWidth = videoStore.state.width || drawingStore.canvasSize.width
-  console.log('calculateFitToWidthZoom - container width:', container.clientWidth, 'canvasWidth:', canvasWidth, 'videoStore.state.width:', videoStore.state.width, 'drawingStore.canvasSize.width:', drawingStore.canvasSize.width)
+  const canvasHeight = videoStore.state.height || drawingStore.canvasSize.height
+  
   // Add some padding (20px on each side)
   const availableWidth = container.clientWidth - 40
-  return availableWidth / canvasWidth
+  const availableHeight = container.clientHeight - 40
+  
+  // Calculate zoom for both dimensions and use the smaller one
+  const zoomToFitWidth = availableWidth / canvasWidth
+  const zoomToFitHeight = availableHeight / canvasHeight
+  
+  return Math.min(zoomToFitWidth, zoomToFitHeight)
 }
 
 // Fit canvas to container width (default view)
@@ -203,18 +210,12 @@ function fitToWidth() {
 
 // Force fit to screen (ignores userAdjustedViewport, callable from outside)
 function fitToScreen() {
-  console.log('DrawingCanvas fitToScreen called')
-  console.log('containerRef:', containerRef.value)
-  console.log('fabricCanvas:', fabricCanvas)
   // Reset the flag first via the store method
   drawingStore.resetViewport()
   // Then calculate and set the proper fit-to-width zoom
   const zoom = calculateFitToWidthZoom()
-  console.log('Calculated zoom:', zoom)
   drawingStore.setViewportWithoutUserFlag(zoom, 0, 0)
-  console.log('Viewport after set:', drawingStore.viewport)
   applyViewportTransform()
-  console.log('applyViewportTransform done')
 }
 
 // Apply current viewport transform to canvas elements
@@ -1274,6 +1275,12 @@ defineExpose({
   inset: 0;
   background: transparent;
   overflow: hidden;
+}
+
+.drawing-canvas-container canvas {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
 }
 
 /* Pan cursor when pan tool is active */
