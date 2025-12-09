@@ -1,7 +1,11 @@
 <template>
   <div class="tool-palette">
-    <div class="tool-section">
-      <h3>Tools</h3>
+    <!-- Tools Section -->
+    <div class="tool-section tools-section">
+      <div class="section-header">
+        <span class="section-title">Tools</span>
+        <span class="tool-hint" v-if="currentToolHotkey">{{ currentToolHotkey }}</span>
+      </div>
       <div class="tools-grid">
         <button
           v-for="tool in tools"
@@ -10,51 +14,80 @@
           @click="drawingStore.setTool(tool.id)"
           @mouseenter="drawingStore.setHoveredHint(getTooltip(tool))"
           @mouseleave="drawingStore.setHoveredHint('')"
+          :title="getTooltip(tool)"
         >
           <span v-html="tool.icon"></span>
         </button>
       </div>
     </div>
 
-    <div class="tool-section">
-      <h3>Color</h3>
-      <input
-        type="color"
-        :value="drawingStore.toolSettings.color"
-        @input="onColorChange"
-        class="color-picker"
-      />
-      <div class="color-presets">
-        <button
-          v-for="color in colorPresets"
-          :key="color"
-          :style="{ background: color }"
-          class="color-preset"
-          @click="drawingStore.setColor(color)"
+    <!-- Color Section -->
+    <div class="tool-section color-section">
+      <div class="section-header">
+        <span class="section-title">Color</span>
+        <span class="color-value">{{ drawingStore.toolSettings.color }}</span>
+      </div>
+      <div class="color-main">
+        <input
+          type="color"
+          :value="drawingStore.toolSettings.color"
+          @input="onColorChange"
+          class="color-picker"
         />
+        <div class="color-presets">
+          <button
+            v-for="color in colorPresets"
+            :key="color"
+            :style="{ background: color }"
+            :class="{ active: drawingStore.toolSettings.color === color }"
+            class="color-preset"
+            @click="drawingStore.setColor(color)"
+          />
+        </div>
       </div>
     </div>
 
-    <div class="tool-section">
-      <h3>Brush Size</h3>
-      <input
-        type="range"
-        min="1"
-        max="50"
-        :value="drawingStore.toolSettings.brushSize"
-        @input="onBrushSizeChange"
-      />
-      <span class="size-value">{{ drawingStore.toolSettings.brushSize }}px</span>
-    </div>
+    <!-- Brush Settings Section -->
+    <div class="tool-section brush-section">
+      <div class="section-header">
+        <span class="section-title">Brush</span>
+      </div>
+      
+      <div class="brush-controls">
+        <div class="control-row">
+          <label>Size</label>
+          <div class="slider-with-value">
+            <input
+              type="range"
+              min="1"
+              max="50"
+              :value="drawingStore.toolSettings.brushSize"
+              @input="onBrushSizeChange"
+            />
+            <span class="value-display">{{ drawingStore.toolSettings.brushSize }}</span>
+          </div>
+        </div>
+        
+        <div class="control-row">
+          <label>Opacity</label>
+          <div class="slider-with-value">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              :value="drawingStore.toolSettings.opacity * 100"
+              @input="onOpacityChange"
+            />
+            <span class="value-display">{{ Math.round(drawingStore.toolSettings.opacity * 100) }}%</span>
+          </div>
+        </div>
+      </div>
 
-    <div class="tool-section brush-palette-section">
-      <h3 
-        class="collapsible-header"
-        @click="brushPaletteCollapsed = !brushPaletteCollapsed"
-      >
-        <span>Brush Type</span>
-        <ChevronDown :size="14" :class="{ rotated: brushPaletteCollapsed }" />
-      </h3>
+      <!-- Brush Type (Collapsible) -->
+      <div class="brush-type-toggle" @click="brushPaletteCollapsed = !brushPaletteCollapsed">
+        <span>{{ currentBrushName }}</span>
+        <ChevronDown :size="12" :class="{ rotated: brushPaletteCollapsed }" />
+      </div>
       <div class="brush-palette" v-show="!brushPaletteCollapsed">
         <button
           v-for="brush in brushTypes"
@@ -64,43 +97,46 @@
           @mouseenter="drawingStore.setHoveredHint(brush.name)"
           @mouseleave="drawingStore.setHoveredHint('')"
           class="brush-preview"
+          :title="brush.name"
         >
           <div class="brush-shape" :class="brush.id"></div>
         </button>
       </div>
     </div>
 
-    <div class="tool-section">
-      <h3>Opacity</h3>
-      <input
-        type="range"
-        min="0"
-        max="100"
-        :value="drawingStore.toolSettings.opacity * 100"
-        @input="onOpacityChange"
-      />
-      <span class="size-value">{{ Math.round(drawingStore.toolSettings.opacity * 100) }}%</span>
-    </div>
-
-    <div class="tool-section">
-      <h3>Actions</h3>
+    <!-- Actions Section -->
+    <div class="tool-section actions-section">
+      <div class="section-header">
+        <span class="section-title">Actions</span>
+      </div>
       <div class="action-buttons">
         <button 
           @click="emit('undo')" 
-          @mouseenter="drawingStore.setHoveredHint('Undo last action (Ctrl+Z)')"
+          @mouseenter="drawingStore.setHoveredHint('Undo (Ctrl+Z)')"
           @mouseleave="drawingStore.setHoveredHint('')"
-        ><Undo2 :size="14" /> Undo</button>
+          class="action-btn"
+        >
+          <Undo2 :size="14" />
+          <span>Undo</span>
+        </button>
         <button 
           @click="emit('redo')" 
-          @mouseenter="drawingStore.setHoveredHint('Redo last undone action (Ctrl+Y)')"
+          @mouseenter="drawingStore.setHoveredHint('Redo (Ctrl+Y)')"
           @mouseleave="drawingStore.setHoveredHint('')"
-        ><Redo2 :size="14" /> Redo</button>
+          class="action-btn"
+        >
+          <Redo2 :size="14" />
+          <span>Redo</span>
+        </button>
         <button 
           @click="emit('clear')" 
-          class="danger"
-          @mouseenter="drawingStore.setHoveredHint('Clear all drawings on current frame')"
+          class="action-btn danger"
+          @mouseenter="drawingStore.setHoveredHint('Clear frame')"
           @mouseleave="drawingStore.setHoveredHint('')"
-        ><Trash2 :size="14" /> Clear</button>
+        >
+          <Trash2 :size="14" />
+          <span>Clear</span>
+        </button>
       </div>
     </div>
   </div>
@@ -187,6 +223,18 @@ const artistTools: Tool[] = [
 // Use either basic or artist tools based on setting
 const tools = computed(() => settingsStore.artistControls ? artistTools : basicTools)
 
+// Get current tool hotkey for display
+const currentToolHotkey = computed(() => {
+  const currentTool = tools.value.find(t => t.id === drawingStore.toolSettings.tool)
+  return currentTool?.hotkey || ''
+})
+
+// Get current brush name
+const currentBrushName = computed(() => {
+  const brush = brushTypes.find(b => b.id === drawingStore.toolSettings.brushType)
+  return brush?.name || 'Round Brush'
+})
+
 // Format tooltip text
 function getTooltip(tool: Tool): string {
   if (tool.id === 'pan') {
@@ -218,73 +266,123 @@ function onOpacityChange(e: Event) {
 
 <style scoped>
 .tool-palette {
-  padding: 12px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 2px;
   overflow-y: auto;
   overflow-x: hidden;
   height: 100%;
+  background: #1a1a1a;
 }
 
-.tool-section h3 {
-  margin: 0 0 8px 0;
-  font-size: 11px;
+/* Section Styles */
+.tool-section {
+  background: #222;
+  border-radius: 6px;
+  padding: 10px;
+  border: 1px solid #2a2a2a;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   color: #666;
   font-weight: 600;
-  line-height: 1.2;
 }
 
+.tool-hint {
+  font-size: 9px;
+  color: #555;
+  background: #1a1a1a;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+/* Tools Grid */
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
-  overflow: visible;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
 }
 
 .tools-grid button {
-  height: 36px;
-  background: #252525;
+  aspect-ratio: 1;
+  background: #2a2a2a;
   border-radius: 4px;
-  font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #888;
-  position: relative;
+  color: #777;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
 }
 
 .tools-grid button svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .tools-grid button:hover {
   background: #333;
-  color: #fff;
+  color: #bbb;
+  border-color: #444;
 }
 
 .tools-grid button.active {
   background: var(--accent, #e85d04);
   color: #fff;
+  border-color: var(--accent, #e85d04);
+  box-shadow: 0 0 8px rgba(232, 93, 4, 0.3);
+}
+
+/* Color Section */
+.color-value {
+  font-size: 9px;
+  color: #555;
+  font-family: monospace;
+  text-transform: uppercase;
+}
+
+.color-main {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
 }
 
 .color-picker {
-  width: 100%;
-  height: 32px;
-  border-radius: 4px;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
   cursor: pointer;
   padding: 0;
-  border: 1px solid #333;
+  border: 2px solid #333;
+  flex-shrink: 0;
+}
+
+.color-picker::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.color-picker::-webkit-color-swatch {
+  border-radius: 3px;
+  border: none;
 }
 
 .color-presets {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 3px;
-  margin-top: 6px;
+  gap: 2px;
+  flex: 1;
 }
 
 .color-preset {
@@ -292,104 +390,118 @@ function onOpacityChange(e: Event) {
   border: 1px solid #333;
   border-radius: 3px;
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: all 0.15s ease;
 }
 
 .color-preset:hover {
-  transform: scale(1.15);
+  transform: scale(1.1);
   z-index: 1;
+  border-color: #555;
 }
 
-input[type="range"] {
-  width: 100%;
-  height: 4px;
+.color-preset.active {
+  border-color: #fff;
+  box-shadow: 0 0 0 1px #fff;
 }
 
-.size-value {
-  font-size: 11px;
-  color: #666;
-  display: block;
-  margin-top: 4px;
-}
-
-.action-buttons {
+/* Brush Controls */
+.brush-controls {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.action-buttons button {
-  padding: 7px 10px;
-  background: #252525;
-  border-radius: 4px;
-  text-align: left;
-  font-size: 12px;
-  color: #aaa;
+.control-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  min-width: 0;
+  gap: 8px;
 }
 
-.action-buttons button svg {
+.control-row label {
+  font-size: 10px;
+  color: #666;
+  width: 45px;
   flex-shrink: 0;
 }
 
-.action-buttons button:hover {
+.slider-with-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.slider-with-value input[type="range"] {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
   background: #333;
-  color: #fff;
+  border-radius: 2px;
+  outline: none;
 }
 
-.action-buttons button.danger {
-  color: #e85d04;
+.slider-with-value input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--accent, #e85d04);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.1s;
 }
 
-.action-buttons button.danger:hover {
-  background: #e85d04;
-  color: #fff;
+.slider-with-value input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
 }
 
-/* Collapsible header styles */
-.collapsible-header {
+.value-display {
+  font-size: 10px;
+  color: #888;
+  min-width: 28px;
+  text-align: right;
+  font-family: monospace;
+}
+
+/* Brush Type Toggle */
+.brush-type-toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 6px 8px;
+  background: #1a1a1a;
+  border-radius: 4px;
   cursor: pointer;
-  user-select: none;
-  padding: 2px 0;
-  border-radius: 3px;
-  transition: background 0.15s ease;
+  font-size: 11px;
+  color: #888;
+  transition: all 0.15s ease;
+  border: 1px solid #2a2a2a;
 }
 
-.collapsible-header:hover {
-  background: rgba(255, 255, 255, 0.05);
+.brush-type-toggle:hover {
+  background: #252525;
+  color: #aaa;
 }
 
-.collapsible-header svg {
+.brush-type-toggle svg {
   transition: transform 0.2s ease;
-  color: #666;
+  color: #555;
 }
 
-.collapsible-header svg.rotated {
+.brush-type-toggle svg.rotated {
   transform: rotate(-90deg);
 }
 
-/* MS Paint Brush Palette Styles */
-.brush-palette-section {
-  margin-top: 4px;
-}
-
+/* Brush Palette */
 .brush-palette {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
-  background: #1a1a1a;
+  gap: 2px;
+  margin-top: 6px;
   padding: 4px;
+  background: #1a1a1a;
   border-radius: 4px;
-  border: 1px solid #333;
+  border: 1px solid #2a2a2a;
 }
 
 .brush-preview {
@@ -406,7 +518,7 @@ input[type="range"] {
 
 .brush-preview:hover {
   background: #333;
-  border-color: #555;
+  border-color: #444;
 }
 
 .brush-preview.active {
@@ -415,10 +527,10 @@ input[type="range"] {
 }
 
 .brush-shape {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   background: currentColor;
-  color: #888;
+  color: #666;
 }
 
 .brush-preview:hover .brush-shape,
@@ -426,76 +538,56 @@ input[type="range"] {
   color: #fff;
 }
 
-/* Round brush - circle */
-.brush-shape.round {
-  border-radius: 50%;
+/* Brush shape variants */
+.brush-shape.round { border-radius: 50%; }
+.brush-shape.square { border-radius: 0; }
+.brush-shape.slash-right { width: 3px; height: 16px; transform: rotate(-45deg); border-radius: 1px; }
+.brush-shape.slash-left { width: 3px; height: 16px; transform: rotate(45deg); border-radius: 1px; }
+.brush-shape.calligraphy { width: 5px; height: 16px; border-radius: 2px; transform: rotate(-30deg); }
+.brush-shape.oil { border-radius: 50%; box-shadow: 0 0 3px currentColor; opacity: 0.9; }
+.brush-shape.crayon { border-radius: 2px; background: linear-gradient(135deg, currentColor 0%, transparent 20%, currentColor 25%, transparent 40%, currentColor 45%, transparent 60%, currentColor 65%, transparent 80%, currentColor 100%); }
+.brush-shape.marker { border-radius: 3px; width: 10px; height: 16px; opacity: 0.7; }
+.brush-shape.pencil-tip { width: 7px; height: 7px; transform: rotate(45deg); border-radius: 1px; }
+
+/* Action Buttons */
+.action-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
 }
 
-/* Square brush - no border radius */
-.brush-shape.square {
-  border-radius: 0;
-}
-
-/* Forward slash brush */
-.brush-shape.slash-right {
-  width: 4px;
-  height: 18px;
-  transform: rotate(-45deg);
-  border-radius: 2px;
-}
-
-/* Back slash brush */
-.brush-shape.slash-left {
-  width: 4px;
-  height: 18px;
-  transform: rotate(45deg);
-  border-radius: 2px;
-}
-
-/* Calligraphy brush - diagonal oval */
-.brush-shape.calligraphy {
-  width: 6px;
-  height: 18px;
-  border-radius: 3px;
-  transform: rotate(-30deg);
-}
-
-/* Oil brush - soft circle with glow effect */
-.brush-shape.oil {
-  border-radius: 50%;
-  box-shadow: 0 0 4px currentColor, 0 0 8px currentColor;
-  opacity: 0.9;
-}
-
-/* Crayon - rough textured edge */
-.brush-shape.crayon {
-  border-radius: 2px;
-  background: linear-gradient(135deg, 
-    currentColor 0%, 
-    transparent 20%, 
-    currentColor 25%,
-    transparent 40%,
-    currentColor 45%,
-    transparent 60%,
-    currentColor 65%,
-    transparent 80%,
-    currentColor 100%
-  );
-}
-
-/* Marker - rounded rectangle with transparency hint */
-.brush-shape.marker {
+.action-btn {
+  padding: 6px 8px;
+  background: #2a2a2a;
   border-radius: 4px;
-  width: 12px;
-  height: 18px;
-  opacity: 0.7;
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
 }
 
-/* Pencil tip - small diamond/point */
-.brush-shape.pencil-tip {
-  width: 8px;
-  height: 8px;
-  transform: rotate(45deg);
-  border-radius: 1px;
+.action-btn:hover {
+  background: #333;
+  color: #bbb;
+  border-color: #444;
+}
+
+.action-btn.danger {
+  grid-column: span 2;
+  color: #c44;
+}
+
+.action-btn.danger:hover {
+  background: #e85d04;
+  color: #fff;
+  border-color: #e85d04;
+}
+
+.action-btn svg {
+  flex-shrink: 0;
 }
 </style>
