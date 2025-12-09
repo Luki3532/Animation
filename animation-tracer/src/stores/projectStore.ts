@@ -7,7 +7,8 @@ import type {
   AutoSaveStatus,
   VideoSourceReference,
   VideoSettings,
-  DrawingSettings
+  DrawingSettings,
+  ProjectFormatType
 } from '../types/project'
 import { AUTO_SAVE_INTERVAL } from '../types/project'
 import { ProjectService } from '../services/projectService'
@@ -18,6 +19,7 @@ export const useProjectStore = defineStore('project', () => {
   // Current project state
   const projectName = ref<string>('Untitled')
   const projectPath = ref<string>('') // Empty if not saved yet
+  const projectFormat = ref<ProjectFormatType>('lucas') // Current format type
   const isDirty = ref<boolean>(false) // Has unsaved changes
   
   // Checkpoints
@@ -39,6 +41,7 @@ export const useProjectStore = defineStore('project', () => {
   // Video reconnection state
   const needsVideoReconnect = ref<boolean>(false)
   const videoSourceRef = ref<VideoSourceReference | null>(null)
+  const showVideoReconnectDialog = ref<boolean>(false)
   
   // Computed
   const hasCheckpoints = computed(() => checkpoints.value.length > 0)
@@ -46,6 +49,7 @@ export const useProjectStore = defineStore('project', () => {
   const hasUnsavedChanges = computed(() => isDirty.value)
   const isProjectSaved = computed(() => projectPath.value !== '')
   const supportsAutoSave = computed(() => ProjectService.supportsFileSystemAccess())
+  const currentFormat = computed(() => projectFormat.value)
   const autoSaveStatusText = computed(() => {
     switch (autoSaveStatus.value) {
       case 'saving': return 'Saving...'
@@ -123,11 +127,15 @@ export const useProjectStore = defineStore('project', () => {
     if (!hasFileHandle.value) return false
     
     const drawingStore = useDrawingStore()
+    const videoStore = useVideoStore()
     
     autoSaveStatus.value = 'saving'
     
     try {
       const { video, drawing, currentFrame } = getProjectData()
+      
+      // Get video file for .fluf format
+      const videoFile = projectFormat.value === 'fluf' ? videoStore.state.file : null
       
       const blob = await ProjectService.saveProject(
         projectName.value,
@@ -135,7 +143,9 @@ export const useProjectStore = defineStore('project', () => {
         drawing,
         currentFrame,
         drawingStore.frameDrawings,
-        checkpoints.value
+        checkpoints.value,
+        projectFormat.value,
+        videoFile
       )
       
       const success = await ProjectService.saveToHandle(blob)
@@ -307,6 +317,7 @@ export const useProjectStore = defineStore('project', () => {
   // Save project to file
   async function saveProject(saveAs: boolean = false): Promise<boolean> {
     const drawingStore = useDrawingStore()
+    const videoStore = useVideoStore()
     
     isSaving.value = true
     
@@ -325,23 +336,29 @@ export const useProjectStore = defineStore('project', () => {
       
       const { video, drawing, currentFrame } = getProjectData()
       
+      // Get video file for .fluf format
+      const videoFile = projectFormat.value === 'fluf' ? videoStore.state.file : null
+      
       const blob = await ProjectService.saveProject(
         filename,
         video,
         drawing,
         currentFrame,
         drawingStore.frameDrawings,
-        checkpoints.value
+        checkpoints.value,
+        projectFormat.value,
+        videoFile
       )
       
       // Download the file
       const safeFilename = filename.replace(/[^a-z0-9_\-]/gi, '_')
-      ProjectService.downloadBlob(blob, `${safeFilename}.lucas`)
+      const extension = projectFormat.value === 'fluf' ? '.fluf' : '.lucas'
+      ProjectService.downloadBlob(blob, `${safeFilename}${extension}`)
       
-      projectPath.value = `${safeFilename}.lucas`
+      projectPath.value = `${safeFilename}${extension}`
       isDirty.value = false
       
-      toast(`Saved: ${filename}.lucas`)
+      toast(`Saved: ${filename}${extension}`)
       
       return true
     } catch (error) {
@@ -367,7 +384,7 @@ export const useProjectStore = defineStore('project', () => {
       
       const { file, handle } = result
       
-      const { manifest, projectData, frames, checkpoints: loadedCheckpoints } = 
+      const { manifest, projectData, frames, checkpoints: loadedCheckpoints, embeddedVideo, formatType } = 
         await ProjectService.loadProject(file)
       
       const drawingStore = useDrawingStore()
@@ -376,6 +393,7 @@ export const useProjectStore = defineStore('project', () => {
       // Apply loaded data
       projectName.value = manifest.name
       projectPath.value = file.name
+      projectFormat.value = formatType
       
       // Clear and load frames
       drawingStore.frameDrawings.clear()
@@ -387,28 +405,28 @@ export const useProjectStore = defineStore('project', () => {
       drawingStore.canvasSize = projectData.drawing.canvasSize
       drawingStore.toolSettings = projectData.drawing.toolSettings
       
-      // Load video settings
-      // Check if we have a video source to reconnect
-      if (projectData.video.videoSource && !projectData.video.isEmptyProject) {
-        // Set flag for video reconnection needed
+      // Handle video loading based on format type
+      if (embeddedVideo) {
+        // .fluf format - video is embedded, load directly
+        videoStore.loadVideo(embeddedVideo)
+        needsVideoReconnect.value = false
+        videoSourceRef.value = null
+        toast(`Loaded: ${manifest.name} (with video)`)
+      } else if (projectData.video.videoSource && !projectData.video.isEmptyProject) {
+        // .lucas format - need to reconnect video
         needsVideoReconnect.value = true
         videoSourceRef.value = projectData.video.videoSource
+        showVideoReconnectDialog.value = true
         
-        // For now, create as empty project with saved dimensions
-        // User will be prompted to reconnect video
+        // Create empty project with saved dimensions while waiting for video
         videoStore.createEmptyProject(
           projectData.video.width || 512,
           projectData.video.height || 512,
           projectData.video.frameCount || 100,
           projectData.video.fps || 24
         )
-        
-        // Show reconnect prompt after a short delay
-        setTimeout(() => {
-          toast(`Video needed: ${projectData.video.videoSource?.filename}`, 5000)
-        }, 500)
       } else {
-        // Create empty project with saved dimensions
+        // Empty project
         videoStore.createEmptyProject(
           projectData.video.width || 512,
           projectData.video.height || 512,
@@ -438,7 +456,9 @@ export const useProjectStore = defineStore('project', () => {
         startAutoSaveTimer()
       }
       
-      toast(`Loaded: ${manifest.name}`)
+      if (!embeddedVideo) {
+        toast(`Loaded: ${manifest.name}`)
+      }
       
       return true
     } catch (error) {
@@ -454,12 +474,63 @@ export const useProjectStore = defineStore('project', () => {
   function resetProject() {
     projectName.value = 'Untitled'
     projectPath.value = ''
+    projectFormat.value = 'lucas'
     checkpoints.value = []
     isDirty.value = false
     hasFileHandle.value = false
     autoSaveStatus.value = 'no-handle'
+    needsVideoReconnect.value = false
+    videoSourceRef.value = null
+    showVideoReconnectDialog.value = false
     stopAutoSaveTimer()
     ProjectService.setFileHandle(null)
+  }
+  
+  // Browse for video to reconnect
+  async function browseForVideo(): Promise<boolean> {
+    const videoStore = useVideoStore()
+    
+    const file = await ProjectService.openVideoFilePicker()
+    if (!file) return false
+    
+    // Load the video
+    videoStore.loadVideo(file)
+    
+    // Clear reconnect state
+    needsVideoReconnect.value = false
+    showVideoReconnectDialog.value = false
+    
+    // Update the video source reference for future saves
+    videoSourceRef.value = {
+      filename: file.name,
+      fileSize: file.size,
+      duration: 0, // Will be updated when video loads
+      mimeType: file.type
+    }
+    
+    markDirty()
+    toast(`Video reconnected: ${file.name}`)
+    
+    return true
+  }
+  
+  // Dismiss video reconnect dialog (user chooses to work without video)
+  function dismissVideoReconnect() {
+    showVideoReconnectDialog.value = false
+  }
+  
+  // Set project format
+  function setFormat(format: ProjectFormatType) {
+    if (projectFormat.value !== format) {
+      projectFormat.value = format
+      markDirty()
+      
+      if (format === 'fluf') {
+        toast('Format: .fluf - Video will be embedded in project file')
+      } else {
+        toast('Format: .lucas - Video referenced by filename')
+      }
+    }
   }
   
   // Toggle checkpoint panel
@@ -485,6 +556,7 @@ export const useProjectStore = defineStore('project', () => {
     hasFileHandle,
     needsVideoReconnect,
     videoSourceRef,
+    showVideoReconnectDialog,
     
     // Computed
     hasCheckpoints,
@@ -493,6 +565,7 @@ export const useProjectStore = defineStore('project', () => {
     isProjectSaved,
     supportsAutoSave,
     autoSaveStatusText,
+    currentFormat,
     
     // Actions
     createCheckpoint,
@@ -506,6 +579,9 @@ export const useProjectStore = defineStore('project', () => {
     markDirty,
     toggleCheckpointPanel,
     toast,
+    browseForVideo,
+    dismissVideoReconnect,
+    setFormat,
     
     // Auto-save actions
     pickSaveLocation,

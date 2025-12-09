@@ -44,6 +44,18 @@
           <svg v-else-if="projectStore.autoSaveStatus === 'error'" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           {{ projectStore.autoSaveStatusText }}
         </span>
+        
+        <!-- Format selector (advanced option) -->
+        <select 
+          v-if="videoStore.hasProject && videoStore.hasVideo"
+          class="format-select"
+          :value="projectStore.currentFormat"
+          @change="handleFormatChange"
+          title="Project Format: .lucas (references video) or .fluf (embeds video)"
+        >
+          <option value="lucas">.lucas (smaller)</option>
+          <option value="fluf">.fluf (portable)</option>
+        </select>
       </div>
       
       <nav class="header-nav" v-if="videoStore.hasProject">
@@ -82,6 +94,9 @@
     
     <!-- Checkpoint Panel -->
     <CheckpointPanel v-if="projectStore.showCheckpointPanel" />
+    
+    <!-- Video Reconnect Dialog -->
+    <VideoReconnectDialog />
 
     <!-- Crop Panel (collapsible) -->
     <div v-if="showCropPanel && videoStore.hasVideo" class="crop-panel">
@@ -137,7 +152,7 @@
           <!-- Video project: show video layer and drawing layer -->
           <template v-if="videoStore.hasVideo">
             <div class="video-layer" :class="{ hidden: !showVideo }">
-              <VideoPlayer ref="videoPlayer" />
+              <VideoPlayer ref="videoPlayer" @video-loaded="onVideoLoaded" />
             </div>
             <div class="drawing-layer">
               <DrawingCanvas ref="drawingCanvas" />
@@ -202,7 +217,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import VideoPlayer from './components/VideoPlayer.vue'
 import DrawingCanvas from './components/DrawingCanvas.vue'
 import ToolPalette from './components/ToolPalette.vue'
@@ -210,6 +225,7 @@ import ExportPanel from './components/ExportPanel.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import Timeline from './components/Timeline.vue'
 import CheckpointPanel from './components/CheckpointPanel.vue'
+import VideoReconnectDialog from './components/VideoReconnectDialog.vue'
 import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
 import { useSettingsStore } from './stores/settingsStore'
@@ -322,6 +338,20 @@ function closeProject() {
 
 function fitToScreen() {
   drawingCanvas.value?.fitToScreen()
+}
+
+// Called when video finishes loading - auto fit to screen
+function onVideoLoaded() {
+  // Use nextTick to ensure DOM is ready
+  nextTick(() => {
+    fitToScreen()
+  })
+}
+
+// Handle format change from dropdown
+function handleFormatChange(e: Event) {
+  const value = (e.target as HTMLSelectElement).value as 'lucas' | 'fluf'
+  projectStore.setFormat(value)
 }
 
 // Apply video opacity as CSS variable
@@ -570,6 +600,28 @@ onUnmounted(() => {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Format selector dropdown */
+.format-select {
+  background: #333;
+  color: #888;
+  border: 1px solid #444;
+  border-radius: calc(4px * var(--ui-scale, 1));
+  padding: calc(2px * var(--ui-scale, 1)) calc(6px * var(--ui-scale, 1));
+  font-size: calc(11px * var(--ui-scale, 1));
+  cursor: pointer;
+  margin-left: calc(8px * var(--ui-scale, 1));
+}
+
+.format-select:hover {
+  background: #3a3a3a;
+  color: #aaa;
+}
+
+.format-select:focus {
+  outline: none;
+  border-color: #555;
 }
 
 /* Toast notification */

@@ -3,12 +3,22 @@ import type { FrameDrawing, ToolSettings, CanvasSize } from './drawing'
 /**
  * Project file format version
  */
-export const PROJECT_FORMAT_VERSION = '1.1.0'
+export const PROJECT_FORMAT_VERSION = '1.2.0'
 
 /**
- * File extension for project files
+ * File extension for conservative project files (reference video by path)
  */
 export const PROJECT_FILE_EXTENSION = '.lucas'
+
+/**
+ * File extension for full project files (video embedded)
+ */
+export const FULL_PROJECT_FILE_EXTENSION = '.fluf'
+
+/**
+ * Project format type
+ */
+export type ProjectFormatType = 'lucas' | 'fluf'
 
 /**
  * Auto-save interval in milliseconds (30 seconds)
@@ -32,10 +42,14 @@ export interface ProjectManifest {
 export interface VideoSourceReference {
   /** Original filename of the video */
   filename: string
+  /** Full file path (if available from File System Access API) */
+  fullPath?: string
   /** File size in bytes for validation */
   fileSize: number
   /** Duration in seconds for validation */
   duration: number
+  /** MIME type of the video */
+  mimeType?: string
 }
 
 /**

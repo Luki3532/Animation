@@ -104,6 +104,7 @@ const showNewProjectDialog = ref(false)
 
 const emit = defineEmits<{
   frameReady: [imageData: ImageData]
+  videoLoaded: []
 }>()
 
 // Computed style for empty canvas that uses viewport transform
@@ -236,6 +237,9 @@ function onVideoLoaded() {
   videoStore.applySavedSettings()
   
   seekToFrame(videoStore.state.currentFrame)
+  
+  // Emit event so parent can fit to screen
+  emit('videoLoaded')
 }
 
 function onSeeked() {

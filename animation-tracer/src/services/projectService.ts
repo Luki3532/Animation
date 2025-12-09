@@ -7,7 +7,8 @@ import type {
   ProjectCheckpointFull,
   VideoSettings,
   DrawingSettings,
-  SerializedFrame
+  SerializedFrame,
+  ProjectFormatType
 } from '../types/project'
 import { PROJECT_FORMAT_VERSION } from '../types/project'
 
@@ -71,18 +72,21 @@ export class ProjectService {
   /**
    * Pick a save location using File System Access API
    */
-  static async pickSaveLocation(suggestedName: string): Promise<FileSystemFileHandle | null> {
+  static async pickSaveLocation(suggestedName: string, format: ProjectFormatType = 'lucas'): Promise<FileSystemFileHandle | null> {
     if (!this.supportsFileSystemAccess()) {
       console.warn('File System Access API not supported')
       return null
     }
 
+    const extension = format === 'fluf' ? '.fluf' : '.lucas'
+    const description = format === 'fluf' ? 'Full Lucas Format (with video)' : 'Lucas Project File'
+
     try {
       const handle = await window.showSaveFilePicker!({
-        suggestedName: `${suggestedName}.lucas`,
+        suggestedName: `${suggestedName}${extension}`,
         types: [{
-          description: 'Lucas Project File',
-          accept: { 'application/zip': ['.lucas'] }
+          description,
+          accept: { 'application/zip': [extension] }
         }]
       })
       this.fileHandle = handle
@@ -131,8 +135,8 @@ export class ProjectService {
     try {
       const [handle] = await window.showOpenFilePicker({
         types: [{
-          description: 'Lucas Project File',
-          accept: { 'application/zip': ['.lucas'] }
+          description: 'Project Files',
+          accept: { 'application/zip': ['.lucas', '.fluf'] }
         }],
         multiple: false
       })
@@ -145,6 +149,13 @@ export class ProjectService {
       }
       return null
     }
+  }
+
+  /**
+   * Detect format type from file extension
+   */
+  static getFormatType(filename: string): ProjectFormatType {
+    return filename.toLowerCase().endsWith('.fluf') ? 'fluf' : 'lucas'
   }
 
   /**
@@ -270,7 +281,9 @@ export class ProjectService {
   }
 
   /**
-   * Save project to a .lucas file
+   * Save project to a .lucas or .fluf file
+   * @param format 'lucas' = reference video by path, 'fluf' = embed video in file
+   * @param videoFile The video file to embed (required for 'fluf' format)
    */
   static async saveProject(
     projectName: string,
@@ -278,7 +291,9 @@ export class ProjectService {
     drawingSettings: DrawingSettings,
     currentFrame: number,
     frames: Map<number, FrameDrawing>,
-    checkpoints: ProjectCheckpointFull[]
+    checkpoints: ProjectCheckpointFull[],
+    format: ProjectFormatType = 'lucas',
+    videoFile?: File | null
   ): Promise<Blob> {
     const zip = new JSZip()
     const now = new Date().toISOString()
@@ -322,24 +337,45 @@ export class ProjectService {
       }
     }
 
-    // Generate ZIP blob
+    // For .fluf format, embed the video file
+    if (format === 'fluf' && videoFile) {
+      const videoFolder = zip.folder('video')
+      if (videoFolder) {
+        // Store video file
+        const videoArrayBuffer = await videoFile.arrayBuffer()
+        videoFolder.file(videoFile.name, videoArrayBuffer)
+        
+        // Store video metadata
+        const videoMeta = {
+          filename: videoFile.name,
+          mimeType: videoFile.type,
+          size: videoFile.size
+        }
+        videoFolder.file('meta.json', JSON.stringify(videoMeta, null, 2))
+      }
+    }
+
+    // Generate ZIP blob (use less compression for .fluf since video is already compressed)
     return await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
-      compressionOptions: { level: 6 }
+      compressionOptions: { level: format === 'fluf' ? 1 : 6 }
     })
   }
 
   /**
-   * Load project from a .lucas file
+   * Load project from a .lucas or .fluf file
    */
   static async loadProject(file: File): Promise<{
     manifest: ProjectManifest
     projectData: Omit<ProjectData, 'manifest'>
     frames: Map<number, FrameDrawing>
     checkpoints: ProjectCheckpointFull[]
+    embeddedVideo?: File
+    formatType: ProjectFormatType
   }> {
     const zip = await JSZip.loadAsync(file)
+    const formatType = this.getFormatType(file.name)
 
     // Load manifest
     const manifestContent = await zip.file('manifest.json')?.async('string')
@@ -382,7 +418,22 @@ export class ProjectService {
       }
     }
 
-    return { manifest, projectData, frames, checkpoints }
+    // Check for embedded video (.fluf format)
+    let embeddedVideo: File | undefined
+    const videoFolder = zip.folder('video')
+    if (videoFolder) {
+      const metaContent = await videoFolder.file('meta.json')?.async('string')
+      if (metaContent) {
+        const videoMeta = JSON.parse(metaContent)
+        const videoFile = videoFolder.file(videoMeta.filename)
+        if (videoFile) {
+          const videoBlob = await videoFile.async('blob')
+          embeddedVideo = new File([videoBlob], videoMeta.filename, { type: videoMeta.mimeType })
+        }
+      }
+    }
+
+    return { manifest, projectData, frames, checkpoints, embeddedVideo, formatType }
   }
 
   /**
@@ -404,7 +455,24 @@ export class ProjectService {
     return new Promise((resolve) => {
       const input = document.createElement('input')
       input.type = 'file'
-      input.accept = '.lucas'
+      input.accept = '.lucas,.fluf'
+      input.onchange = () => {
+        const file = input.files?.[0] || null
+        resolve(file)
+      }
+      input.oncancel = () => resolve(null)
+      input.click()
+    })
+  }
+
+  /**
+   * Open video file picker for video reconnection
+   */
+  static async openVideoFilePicker(): Promise<File | null> {
+    return new Promise((resolve) => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'video/*'
       input.onchange = () => {
         const file = input.files?.[0] || null
         resolve(file)
