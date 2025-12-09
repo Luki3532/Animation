@@ -168,7 +168,7 @@
       </aside>
 
       <div class="workspace">
-        <div class="canvas-area">
+        <div class="canvas-area" :style="{ '--canvas-bg': settingsStore.canvasBackgroundColor }">
           <!-- Video project: show video layer and drawing layer -->
           <template v-if="videoStore.hasVideo">
             <div class="video-layer" :class="{ hidden: !showVideo }">
@@ -937,14 +937,7 @@ function checkMobileViewport() {
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: 
-    linear-gradient(45deg, #1e1e1e 25%, transparent 25%),
-    linear-gradient(-45deg, #1e1e1e 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #1e1e1e 75%),
-    linear-gradient(-45deg, transparent 75%, #1e1e1e 75%);
-  background-size: 16px 16px;
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
-  background-color: #161616;
+  background-color: var(--canvas-bg, #1a1a1a);
 }
 
 .video-layer {

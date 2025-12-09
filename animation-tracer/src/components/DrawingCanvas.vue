@@ -507,13 +507,6 @@ function handleTouchStart(e: TouchEvent) {
     const rect = containerRef.value?.getBoundingClientRect()
     if (!rect) return
     
-    // Simulate mouse event for fabric canvas
-    const mouseEvent = new MouseEvent('mousedown', {
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      button: 0
-    })
-    
     // If pan tool, handle panning
     if (drawingStore.toolSettings.tool === 'pan') {
       isPanning = true
@@ -523,9 +516,16 @@ function handleTouchStart(e: TouchEvent) {
       panStartViewportX = drawingStore.viewport.panX
       panStartViewportY = drawingStore.viewport.panY
     } else {
-      // Trigger fabric canvas drawing
+      // Trigger fabric canvas drawing - simulate mouse event directly on upper canvas
       isTouchDrawing = true
-      fabricCanvas.fire('mouse:down', { e: mouseEvent, pointer: fabricCanvas.getScenePoint(mouseEvent) })
+      const upperCanvas = fabricCanvas.upperCanvasEl
+      const mouseEvent = new MouseEvent('mousedown', {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: 0,
+        bubbles: true
+      })
+      upperCanvas.dispatchEvent(mouseEvent)
     }
   }
 }
@@ -565,18 +565,20 @@ function handleTouchMove(e: TouchEvent) {
     drawingStore.setPan(panStartViewportX + deltaX, panStartViewportY + deltaY)
     applyViewportTransform()
   } else if (isTouchDrawing && e.touches.length === 1) {
-    // Drawing
+    // Drawing - simulate mouse event directly on upper canvas
     const touch = e.touches[0]
+    const upperCanvas = fabricCanvas.upperCanvasEl
     const mouseEvent = new MouseEvent('mousemove', {
       clientX: touch.clientX,
       clientY: touch.clientY,
-      button: 0
+      button: 0,
+      bubbles: true
     })
-    fabricCanvas.fire('mouse:move', { e: mouseEvent, pointer: fabricCanvas.getScenePoint(mouseEvent) })
+    upperCanvas.dispatchEvent(mouseEvent)
   }
 }
 
-function handleTouchEnd(e: TouchEvent) {
+function handleTouchEnd(_e: TouchEvent) {
   if (!fabricCanvas) return
   
   if (touchPinching) {
@@ -585,13 +587,15 @@ function handleTouchEnd(e: TouchEvent) {
   }
   
   if (isTouchDrawing) {
-    // Complete the drawing stroke
+    // Complete the drawing stroke - simulate mouse event directly on upper canvas
+    const upperCanvas = fabricCanvas.upperCanvasEl
     const mouseEvent = new MouseEvent('mouseup', {
       clientX: 0,
       clientY: 0,
-      button: 0
+      button: 0,
+      bubbles: true
     })
-    fabricCanvas.fire('mouse:up', { e: mouseEvent })
+    upperCanvas.dispatchEvent(mouseEvent)
     isTouchDrawing = false
   }
   
