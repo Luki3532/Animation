@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { FrameDrawing, ToolSettings, CanvasSize } from '../types/drawing'
+import type { FrameDrawing, ToolSettings, CanvasSize, ViewportState } from '../types/drawing'
 import { CANVAS_SIZES } from '../types/drawing'
 import { 
   saveDrawingData, 
@@ -22,6 +22,16 @@ export const useDrawingStore = defineStore('drawing', () => {
   
   // Canvas size
   const canvasSize = ref<CanvasSize>(CANVAS_SIZES[2]) // Default 128x128
+  
+  // Viewport state (zoom and pan)
+  const viewport = ref<ViewportState>({
+    zoom: 1, // Will be set to fit-to-width on init
+    panX: 0,
+    panY: 0
+  })
+  
+  // Track if user has manually adjusted zoom/pan
+  const userAdjustedViewport = ref(false)
   
   // Hovered tool hint (for status bar)
   const hoveredHint = ref<string>('')
@@ -141,11 +151,73 @@ export const useDrawingStore = defineStore('drawing', () => {
     history.value = []
     historyIndex.value = -1
   }
+
+  // Shift all frame drawings at or after fromIndex by shiftAmount positions
+  // Used when inserting frames to preserve existing drawings at correct positions
+  function shiftFrameDrawings(fromIndex: number, shiftAmount: number) {
+    if (shiftAmount === 0) return
+    
+    // Get all entries that need to be shifted (indices >= fromIndex)
+    const entriesToShift: Array<[number, FrameDrawing]> = []
+    frameDrawings.value.forEach((drawing, index) => {
+      if (index >= fromIndex) {
+        entriesToShift.push([index, drawing])
+      }
+    })
+    
+    // Sort by index descending to avoid overwriting when shifting forward
+    entriesToShift.sort((a, b) => b[0] - a[0])
+    
+    // Remove old entries and add at new positions
+    for (const [oldIndex, drawing] of entriesToShift) {
+      frameDrawings.value.delete(oldIndex)
+      const newIndex = oldIndex + shiftAmount
+      if (newIndex >= 0) {
+        frameDrawings.value.set(newIndex, {
+          ...drawing,
+          frameIndex: newIndex
+        })
+      }
+    }
+  }
+  
+  // Viewport controls
+  function setZoom(zoom: number) {
+    viewport.value.zoom = Math.max(0.1, Math.min(10, zoom))
+    userAdjustedViewport.value = true
+  }
+  
+  function setPan(x: number, y: number) {
+    viewport.value.panX = x
+    viewport.value.panY = y
+    userAdjustedViewport.value = true
+  }
+  
+  function adjustPan(deltaX: number, deltaY: number) {
+    viewport.value.panX += deltaX
+    viewport.value.panY += deltaY
+    userAdjustedViewport.value = true
+  }
+  
+  function resetViewport() {
+    viewport.value.zoom = 1
+    viewport.value.panX = 0
+    viewport.value.panY = 0
+    userAdjustedViewport.value = false
+  }
+  
+  function setViewportWithoutUserFlag(zoom: number, panX: number, panY: number) {
+    viewport.value.zoom = zoom
+    viewport.value.panX = panX
+    viewport.value.panY = panY
+  }
   
   return {
     frameDrawings,
     toolSettings,
     canvasSize,
+    viewport,
+    userAdjustedViewport,
     hoveredHint,
     hasDrawings,
     drawnFrameIndices,
@@ -164,6 +236,12 @@ export const useDrawingStore = defineStore('drawing', () => {
     pushHistory,
     undo,
     redo,
-    clearHistory
+    clearHistory,
+    shiftFrameDrawings,
+    setZoom,
+    setPan,
+    adjustPan,
+    resetViewport,
+    setViewportWithoutUserFlag
   }
 })

@@ -1,7 +1,8 @@
 <template>
   <div class="video-player">
+    <!-- Upload zone - shown only when no project is active -->
     <div
-      v-if="!videoStore.hasVideo"
+      v-if="!videoStore.hasProject"
       class="upload-zone"
       @drop.prevent="handleDrop"
       @dragover.prevent="isDragging = true"
@@ -32,10 +33,20 @@
             Reopen "{{ videoStore.lastVideoName }}"
           </button>
         </div>
+
+        <!-- New Empty Project Button -->
+        <div class="new-project-section">
+          <p class="new-hint">Or start fresh</p>
+          <button class="new-project-button" @click="showNewProjectDialog = true">
+            <Plus :size="16" />
+            New Empty Project
+          </button>
+        </div>
       </div>
     </div>
 
-    <div v-else class="video-container">
+    <!-- Video container - shown when video is loaded -->
+    <div v-else-if="videoStore.hasVideo" class="video-container">
       <video
         ref="videoElement"
         :src="videoStore.state.url"
@@ -50,18 +61,39 @@
         :style="cropStyle"
       />
     </div>
+
+    <!-- Empty project canvas - checkerboard background -->
+    <div v-else-if="videoStore.state.isEmptyProject" class="empty-project-container">
+      <canvas 
+        ref="emptyCanvas" 
+        class="empty-canvas"
+        :width="videoStore.state.width"
+        :height="videoStore.state.height"
+      />
+    </div>
+
+    <!-- New Project Dialog -->
+    <NewProjectDialog 
+      :isOpen="showNewProjectDialog" 
+      @close="showNewProjectDialog = false"
+      @created="onProjectCreated"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
+import { ref, watch, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { Plus } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
+import NewProjectDialog from './NewProjectDialog.vue'
 
 const videoStore = useVideoStore()
 
 const videoElement = ref<HTMLVideoElement | null>(null)
 const frameCanvas = ref<HTMLCanvasElement | null>(null)
+const emptyCanvas = ref<HTMLCanvasElement | null>(null)
 const isDragging = ref(false)
+const showNewProjectDialog = ref(false)
 
 const emit = defineEmits<{
   frameReady: [imageData: ImageData]
@@ -160,13 +192,69 @@ function renderCurrentFrame() {
 watch(
   () => videoStore.state.currentFrame,
   (newFrame) => {
-    seekToFrame(newFrame)
+    if (videoStore.hasVideo) {
+      seekToFrame(newFrame)
+    }
   }
 )
 
+// Render empty project canvas with checkerboard pattern
+function renderEmptyCanvas() {
+  const canvas = emptyCanvas.value
+  if (!canvas) return
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  // Draw checkerboard pattern
+  const tileSize = 8
+  const lightColor = '#3a3a3a'
+  const darkColor = '#2a2a2a'
+
+  for (let y = 0; y < canvas.height; y += tileSize) {
+    for (let x = 0; x < canvas.width; x += tileSize) {
+      const isLight = ((x / tileSize) + (y / tileSize)) % 2 === 0
+      ctx.fillStyle = isLight ? lightColor : darkColor
+      ctx.fillRect(x, y, tileSize, tileSize)
+    }
+  }
+}
+
+// Watch for empty project state
+watch(
+  () => videoStore.state.isEmptyProject,
+  async (isEmptyProject) => {
+    if (isEmptyProject) {
+      await nextTick()
+      renderEmptyCanvas()
+      // Notify that no video seek is needed for empty projects
+      videoStore.notifyVideoSeeked()
+    }
+  },
+  { immediate: true }
+)
+
+// Watch for dimension changes in empty projects
+watch(
+  () => [videoStore.state.width, videoStore.state.height],
+  async () => {
+    if (videoStore.state.isEmptyProject) {
+      await nextTick()
+      renderEmptyCanvas()
+    }
+  }
+)
+
+// Called when new project is created
+function onProjectCreated() {
+  nextTick(() => {
+    renderEmptyCanvas()
+  })
+}
+
 // Keyboard navigation
 function handleKeydown(e: KeyboardEvent) {
-  if (!videoStore.hasVideo) return
+  if (!videoStore.hasProject) return
 
   if (e.key === 'ArrowRight') {
     e.preventDefault()
@@ -294,6 +382,38 @@ defineExpose({
   opacity: 0.7;
 }
 
+.new-project-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+}
+
+.new-hint {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.new-project-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #1a3a1a;
+  color: #7c7;
+  border: 1px solid #2a5a2a;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.new-project-button:hover {
+  background: #2a4a2a;
+  border-color: #4a8a4a;
+  color: #9d9;
+}
+
 .video-container {
   position: absolute;
   inset: 0;
@@ -310,5 +430,20 @@ defineExpose({
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+.empty-project-container {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: 1px solid #333;
 }
 </style>

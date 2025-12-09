@@ -273,7 +273,10 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
+  overflow-x: hidden;
   height: 100%;
+  min-height: 0; /* Important for flex container scrolling */
+  max-height: 100%;
 }
 
 .panel-section h3 {

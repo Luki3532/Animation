@@ -5,10 +5,16 @@ export interface FrameDrawing {
 }
 
 export interface ToolSettings {
-  tool: 'pen' | 'eraser' | 'rectangle' | 'circle' | 'line' | 'select' | 'pencil' | 'brush' | 'spray' | 'fill' | 'eyedropper' | 'marquee' | 'lasso' | 'contour' | 'polygon' | 'curve'
+  tool: 'pen' | 'eraser' | 'rectangle' | 'circle' | 'line' | 'select' | 'pencil' | 'brush' | 'spray' | 'fill' | 'eyedropper' | 'marquee' | 'lasso' | 'contour' | 'polygon' | 'curve' | 'pan'
   color: string
   brushSize: number
   opacity: number
+}
+
+export interface ViewportState {
+  zoom: number
+  panX: number
+  panY: number
 }
 
 export interface CanvasSize {

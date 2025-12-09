@@ -151,6 +151,11 @@ export interface SavedVideoMetadata {
   cropBottom: number
   cropLeft: number
   currentFrame: number
+  // Empty project fields
+  isEmptyProject?: boolean
+  emptyProjectWidth?: number
+  emptyProjectHeight?: number
+  emptyProjectFrameCount?: number
 }
 
 export async function saveVideoMetadata(data: SavedVideoMetadata): Promise<void> {

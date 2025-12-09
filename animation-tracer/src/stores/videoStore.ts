@@ -21,7 +21,8 @@ export const useVideoStore = defineStore('video', () => {
     cropTop: 0,
     cropRight: 0,
     cropBottom: 0,
-    cropLeft: 0
+    cropLeft: 0,
+    isEmptyProject: false
   })
   
   // Frame synchronization state - ensures video seek completes before drawings load
@@ -40,6 +41,7 @@ export const useVideoStore = defineStore('video', () => {
   // Computed
   const currentTime = computed(() => state.value.currentFrame / state.value.fps)
   const hasVideo = computed(() => state.value.url !== '')
+  const hasProject = computed(() => hasVideo.value || state.value.isEmptyProject)
   const hasSavedVideo = computed(() => lastVideoName.value !== '')
   
   // Cropped dimensions
@@ -58,7 +60,8 @@ export const useVideoStore = defineStore('video', () => {
   // Debounced save function
   const debouncedSave = debounce(() => {
     if (!isLoaded.value) return
-    if (!lastVideoName.value) return
+    // Save for both video projects and empty projects
+    if (!lastVideoName.value && !state.value.isEmptyProject) return
     saveVideoMetadata({
       lastVideoName: lastVideoName.value,
       lastVideoPath: lastVideoPath.value,
@@ -67,7 +70,12 @@ export const useVideoStore = defineStore('video', () => {
       cropRight: state.value.cropRight,
       cropBottom: state.value.cropBottom,
       cropLeft: state.value.cropLeft,
-      currentFrame: state.value.currentFrame
+      currentFrame: state.value.currentFrame,
+      // Empty project fields
+      isEmptyProject: state.value.isEmptyProject,
+      emptyProjectWidth: state.value.isEmptyProject ? state.value.width : undefined,
+      emptyProjectHeight: state.value.isEmptyProject ? state.value.height : undefined,
+      emptyProjectFrameCount: state.value.isEmptyProject ? state.value.frameCount : undefined
     })
   }, 500)
   
@@ -78,6 +86,8 @@ export const useVideoStore = defineStore('video', () => {
   watch(() => state.value.cropBottom, debouncedSave)
   watch(() => state.value.cropLeft, debouncedSave)
   watch(() => state.value.currentFrame, debouncedSave)
+  watch(() => state.value.frameCount, debouncedSave) // Also save when frame count changes
+  watch(() => state.value.isEmptyProject, debouncedSave)
   
   // Initialize from storage
   async function initFromStorage() {
@@ -92,6 +102,17 @@ export const useVideoStore = defineStore('video', () => {
       state.value.cropRight = saved.cropRight
       state.value.cropBottom = saved.cropBottom
       state.value.cropLeft = saved.cropLeft
+      
+      // Restore empty project if it was saved
+      if (saved.isEmptyProject && saved.emptyProjectWidth && saved.emptyProjectHeight && saved.emptyProjectFrameCount) {
+        state.value.isEmptyProject = true
+        state.value.width = saved.emptyProjectWidth
+        state.value.height = saved.emptyProjectHeight
+        state.value.frameCount = saved.emptyProjectFrameCount
+        state.value.duration = saved.emptyProjectFrameCount / saved.fps
+        state.value.currentFrame = Math.min(saved.currentFrame, saved.emptyProjectFrameCount - 1)
+        state.value.isLoaded = true
+      }
     }
     isLoaded.value = true
   }
@@ -129,6 +150,10 @@ export const useVideoStore = defineStore('video', () => {
     state.value.fps = fps
     state.value.frameCount = Math.floor(duration * fps)
     state.value.isLoaded = true
+    // The video will seek to the first frame after metadata loads,
+    // so mark as seeking to ensure proper synchronization
+    isSeekingVideo.value = true
+    frameChangeVersion.value++
   }
   
   function setCurrentFrame(frame: number) {
@@ -180,10 +205,18 @@ export const useVideoStore = defineStore('video', () => {
     return frameChangeVersion.value
   }  function setFps(fps: number) {
     state.value.fps = fps
-    state.value.frameCount = Math.floor(state.value.duration * fps)
+    // For video projects, recalculate frame count from duration
+    // For empty projects, keep the existing frame count
+    if (!state.value.isEmptyProject) {
+      state.value.frameCount = Math.floor(state.value.duration * fps)
+    }
+    // Recalculate duration for empty projects
+    if (state.value.isEmptyProject) {
+      state.value.duration = state.value.frameCount / fps
+    }
     // Adjust current frame if it's now out of bounds
     if (state.value.currentFrame >= state.value.frameCount) {
-      state.value.currentFrame = state.value.frameCount - 1
+      state.value.currentFrame = Math.max(0, state.value.frameCount - 1)
     }
   }
   
@@ -218,14 +251,69 @@ export const useVideoStore = defineStore('video', () => {
       cropTop: 0,
       cropRight: 0,
       cropBottom: 0,
-      cropLeft: 0
+      cropLeft: 0,
+      isEmptyProject: false
     }
+  }
+
+  // Create an empty project without video reference
+  function createEmptyProject(width: number, height: number, fps: number, frameCount: number) {
+    clearVideo()
+    state.value.width = width
+    state.value.height = height
+    state.value.fps = fps
+    state.value.frameCount = frameCount
+    state.value.duration = frameCount / fps
+    state.value.currentFrame = 0
+    state.value.isLoaded = true
+    state.value.isEmptyProject = true
+    // For empty projects, no video seek needed
+    isSeekingVideo.value = false
+    frameChangeVersion.value++
+  }
+
+  // Add frames to the end of the project (empty projects only)
+  function addFrames(count: number) {
+    if (!state.value.isEmptyProject || count <= 0) return
+    state.value.frameCount += count
+    state.value.duration = state.value.frameCount / state.value.fps
+  }
+
+  // Insert frames after the current frame position (empty projects only)
+  // Returns the insertion index so drawings can be shifted
+  function insertFramesAfterCurrent(count: number): number {
+    if (!state.value.isEmptyProject || count <= 0) return -1
+    const insertAfterIndex = state.value.currentFrame
+    state.value.frameCount += count
+    state.value.duration = state.value.frameCount / state.value.fps
+    // Move to the first newly inserted frame
+    state.value.currentFrame = insertAfterIndex + 1
+    return insertAfterIndex + 1 // Return where frames were inserted
+  }
+
+  // Set frame count directly (empty projects only)
+  function setFrameCount(count: number) {
+    if (!state.value.isEmptyProject) return
+    state.value.frameCount = Math.max(1, count)
+    state.value.duration = state.value.frameCount / state.value.fps
+    // Adjust current frame if out of bounds
+    if (state.value.currentFrame >= state.value.frameCount) {
+      state.value.currentFrame = state.value.frameCount - 1
+    }
+  }
+  
+  // Set project dimensions (empty projects only)
+  function setProjectDimensions(width: number, height: number) {
+    if (!state.value.isEmptyProject) return
+    state.value.width = Math.max(8, Math.min(4096, width))
+    state.value.height = Math.max(8, Math.min(4096, height))
   }
   
   return {
     state,
     currentTime,
     hasVideo,
+    hasProject,
     hasSavedVideo,
     lastVideoName,
     lastVideoPath,
@@ -244,6 +332,11 @@ export const useVideoStore = defineStore('video', () => {
     setCrop,
     resetCrop,
     clearVideo,
+    createEmptyProject,
+    addFrames,
+    insertFramesAfterCurrent,
+    setFrameCount,
+    setProjectDimensions,
     notifyVideoSeeked,
     waitForVideoSeek,
     getFrameChangeVersion

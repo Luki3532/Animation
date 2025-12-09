@@ -1,5 +1,17 @@
 <template>
-  <div class="drawing-canvas-container" ref="containerRef">
+  <div 
+    class="drawing-canvas-container" 
+    ref="containerRef"
+    :class="{
+      'pan-tool': drawingStore.toolSettings.tool === 'pan',
+      'panning': isPanningRef
+    }"
+    @wheel.prevent="handleWheel"
+    @mousedown="handleContainerMouseDown"
+    @mousemove="handleContainerMouseMove"
+    @mouseup="handleContainerMouseUp"
+    @mouseleave="handleContainerMouseUp"
+  >
     <!-- Onion skin overlay (rendered below main canvas) -->
     <canvas ref="onionCanvasRef" class="onion-canvas" />
     <canvas ref="canvasRef" />
@@ -7,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import { Canvas, PencilBrush, SprayBrush, Circle, Rect, Line, Polygon, Path, FabricObject } from 'fabric'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useVideoStore } from '../stores/videoStore'
@@ -38,6 +50,14 @@ let lassoPoints: { x: number; y: number }[] = []
 let isDrawingLasso = false
 let resizeObserver: ResizeObserver | null = null
 
+// Pan state (middle mouse or pan tool)
+const isPanningRef = ref(false)
+let isPanning = false
+let panStartX = 0
+let panStartY = 0
+let panStartViewportX = 0
+let panStartViewportY = 0
+
 const emit = defineEmits<{
   drawingUpdated: []
 }>()
@@ -47,10 +67,20 @@ onMounted(async () => {
   initCanvas()
   setupKeyboardShortcuts()
   
-  // Watch for container resize
+  // Watch for container resize - recalculate fit-to-width
   if (containerRef.value) {
     resizeObserver = new ResizeObserver(() => {
-      scaleCanvasToFit()
+      // When container resizes, recalculate fit-to-width if user hasn't adjusted
+      if (!drawingStore.userAdjustedViewport) {
+        const zoom = calculateFitToWidthZoom()
+        drawingStore.setViewportWithoutUserFlag(zoom, 0, 0)
+      }
+      // For video projects, use scaleCanvasToFit; for empty projects, apply viewport
+      if (videoStore.hasVideo) {
+        scaleCanvasToFit()
+      } else {
+        applyViewportTransform()
+      }
     })
     resizeObserver.observe(containerRef.value)
   }
@@ -147,11 +177,81 @@ function initCanvas() {
   // Load existing drawing for current frame
   loadFrameDrawing()
 
-  // Scale canvas to fit container
-  scaleCanvasToFit()
+  // Scale canvas to fit container (fit to width by default)
+  fitToWidth()
 }
 
-function scaleCanvasToFit() {
+// Calculate zoom level to fit canvas width to container width
+function calculateFitToWidthZoom(): number {
+  if (!containerRef.value) return 1
+  const container = containerRef.value
+  const canvasWidth = videoStore.state.width || drawingStore.canvasSize.width
+  // Add some padding (20px on each side)
+  const availableWidth = container.clientWidth - 40
+  return availableWidth / canvasWidth
+}
+
+// Fit canvas to container width (default view)
+function fitToWidth() {
+  if (!drawingStore.userAdjustedViewport) {
+    const zoom = calculateFitToWidthZoom()
+    drawingStore.setViewportWithoutUserFlag(zoom, 0, 0)
+  }
+  applyViewportTransform()
+}
+
+// Force fit to screen (ignores userAdjustedViewport, callable from outside)
+function fitToScreen() {
+  const zoom = calculateFitToWidthZoom()
+  drawingStore.setViewportWithoutUserFlag(zoom, 0, 0)
+  drawingStore.userAdjustedViewport = false
+  applyViewportTransform()
+}
+
+// Apply current viewport transform to canvas elements
+function applyViewportTransform() {
+  if (!fabricCanvas || !containerRef.value) return
+
+  const container = containerRef.value
+  const canvasWidth = videoStore.state.width || drawingStore.canvasSize.width
+  const canvasHeight = videoStore.state.height || drawingStore.canvasSize.height
+  const onionCanvas = onionCanvasRef.value
+
+  const zoom = drawingStore.viewport.zoom
+  const panX = drawingStore.viewport.panX
+  const panY = drawingStore.viewport.panY
+
+  const scaledWidth = canvasWidth * zoom
+  const scaledHeight = canvasHeight * zoom
+
+  // Center horizontally, position vertically with pan
+  const offsetX = (container.clientWidth - scaledWidth) / 2 + panX
+  const offsetY = (container.clientHeight - scaledHeight) / 2 + panY
+
+  const wrapper = fabricCanvas.getElement().parentElement
+  if (wrapper) {
+    wrapper.style.position = 'absolute'
+    wrapper.style.left = `${offsetX}px`
+    wrapper.style.top = `${offsetY}px`
+    wrapper.style.transform = `scale(${zoom})`
+    wrapper.style.transformOrigin = 'top left'
+    wrapper.style.width = `${canvasWidth}px`
+    wrapper.style.height = `${canvasHeight}px`
+  }
+
+  // Scale onion canvas to match
+  if (onionCanvas) {
+    onionCanvas.style.position = 'absolute'
+    onionCanvas.style.left = `${offsetX}px`
+    onionCanvas.style.top = `${offsetY}px`
+    onionCanvas.style.transform = `scale(${zoom})`
+    onionCanvas.style.transformOrigin = 'top left'
+    onionCanvas.style.width = `${canvasWidth}px`
+    onionCanvas.style.height = `${canvasHeight}px`
+  }
+}
+
+function scaleCanvasToFit(retryCount = 0) {
   if (!fabricCanvas || !containerRef.value) return
 
   const container = containerRef.value
@@ -169,8 +269,11 @@ function scaleCanvasToFit() {
     
     // Check if video canvas has valid dimensions (it may not be rendered yet)
     if (videoRect.width <= 0 || videoRect.height <= 0) {
-      // Retry after a short delay
-      setTimeout(() => scaleCanvasToFit(), 100)
+      // Retry with exponential backoff, up to 10 attempts
+      if (retryCount < 10) {
+        const delay = Math.min(100 * Math.pow(1.5, retryCount), 500)
+        setTimeout(() => scaleCanvasToFit(retryCount + 1), delay)
+      }
       return
     }
     
@@ -200,44 +303,108 @@ function scaleCanvasToFit() {
       onionCanvas.style.height = `${canvasHeight}px`
     }
   } else {
-    // No video - use standard centering
-    const scaleX = container.clientWidth / canvasWidth
-    const scaleY = container.clientHeight / canvasHeight
-    const scale = Math.min(scaleX, scaleY)
+    // No video (empty project) - use viewport-based positioning with fit-to-width
+    fitToWidth()
+  }
+}
 
-    const scaledWidth = canvasWidth * scale
-    const scaledHeight = canvasHeight * scale
+// Handle mouse wheel for zoom (Ctrl+wheel)
+function handleWheel(e: WheelEvent) {
+  if (e.ctrlKey) {
+    // Zoom with Ctrl+wheel centered on mouse position
+    const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1
+    const oldZoom = drawingStore.viewport.zoom
+    const newZoom = Math.max(0.1, Math.min(10, oldZoom * zoomDelta))
     
-    const offsetX = (container.clientWidth - scaledWidth) / 2
-    const offsetY = (container.clientHeight - scaledHeight) / 2
+    if (newZoom !== oldZoom && containerRef.value) {
+      // Get mouse position relative to container
+      const rect = containerRef.value.getBoundingClientRect()
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
+      
+      // Calculate the point in canvas space under the mouse before zoom
+      const canvasWidth = videoStore.state.width || drawingStore.canvasSize.width
+      const canvasHeight = videoStore.state.height || drawingStore.canvasSize.height
+      
+      const scaledWidthBefore = canvasWidth * oldZoom
+      const scaledHeightBefore = canvasHeight * oldZoom
+      const offsetXBefore = (rect.width - scaledWidthBefore) / 2 + drawingStore.viewport.panX
+      const offsetYBefore = (rect.height - scaledHeightBefore) / 2 + drawingStore.viewport.panY
+      
+      // Point on canvas under mouse (in canvas coordinates)
+      const canvasX = (mouseX - offsetXBefore) / oldZoom
+      const canvasY = (mouseY - offsetYBefore) / oldZoom
+      
+      // Calculate new offset to keep the same canvas point under the mouse
+      const scaledWidthAfter = canvasWidth * newZoom
+      const scaledHeightAfter = canvasHeight * newZoom
+      const newCenterOffsetX = (rect.width - scaledWidthAfter) / 2
+      const newCenterOffsetY = (rect.height - scaledHeightAfter) / 2
+      
+      // Where the canvas point would appear with new zoom (if pan was 0)
+      const newPointX = newCenterOffsetX + canvasX * newZoom
+      const newPointY = newCenterOffsetY + canvasY * newZoom
+      
+      // Adjust pan to keep the point under the mouse
+      const newPanX = mouseX - newPointX
+      const newPanY = mouseY - newPointY
+      
+      drawingStore.setZoom(newZoom)
+      drawingStore.setPan(newPanX, newPanY)
+      applyViewportTransform()
+    }
+  }
+}
 
-    const wrapper = fabricCanvas.getElement().parentElement
-    if (wrapper) {
-      wrapper.style.position = 'absolute'
-      wrapper.style.left = `${offsetX}px`
-      wrapper.style.top = `${offsetY}px`
-      wrapper.style.transform = `scale(${scale})`
-      wrapper.style.transformOrigin = 'top left'
-      wrapper.style.width = `${canvasWidth}px`
-      wrapper.style.height = `${canvasHeight}px`
-    }
-    
-    // Scale onion canvas to match
-    if (onionCanvas) {
-      onionCanvas.style.position = 'absolute'
-      onionCanvas.style.left = `${offsetX}px`
-      onionCanvas.style.top = `${offsetY}px`
-      onionCanvas.style.transform = `scale(${scale})`
-      onionCanvas.style.transformOrigin = 'top left'
-      onionCanvas.style.width = `${canvasWidth}px`
-      onionCanvas.style.height = `${canvasHeight}px`
-    }
+// Handle container mouse events for middle-mouse panning
+function handleContainerMouseDown(e: MouseEvent) {
+  // Middle mouse button (button 1) for panning
+  if (e.button === 1) {
+    e.preventDefault()
+    isPanning = true
+    isPanningRef.value = true
+    panStartX = e.clientX
+    panStartY = e.clientY
+    panStartViewportX = drawingStore.viewport.panX
+    panStartViewportY = drawingStore.viewport.panY
+    return
+  }
+  
+  // Pan tool with left click
+  if (e.button === 0 && drawingStore.toolSettings.tool === 'pan') {
+    isPanning = true
+    isPanningRef.value = true
+    panStartX = e.clientX
+    panStartY = e.clientY
+    panStartViewportX = drawingStore.viewport.panX
+    panStartViewportY = drawingStore.viewport.panY
+  }
+}
+
+function handleContainerMouseMove(e: MouseEvent) {
+  if (isPanning) {
+    const deltaX = e.clientX - panStartX
+    const deltaY = e.clientY - panStartY
+    drawingStore.setPan(panStartViewportX + deltaX, panStartViewportY + deltaY)
+    applyViewportTransform()
+  }
+}
+
+function handleContainerMouseUp(e: MouseEvent) {
+  if (isPanning) {
+    isPanning = false
+    isPanningRef.value = false
   }
 }
 
 function onMouseDown(opt: any) {
   const tool = drawingStore.toolSettings.tool
   if (!fabricCanvas) return
+  
+  // Pan tool is handled at container level, not fabric canvas
+  if (tool === 'pan') {
+    return
+  }
   
   const pointer = fabricCanvas.getScenePoint(opt.e)
   const color = drawingStore.toolSettings.color
@@ -909,6 +1076,10 @@ watch(
     else if (settings.tool === 'select') {
       fabricCanvas.isDrawingMode = false
     }
+    // Pan tool - disable drawing, let container handle it
+    else if (settings.tool === 'pan') {
+      fabricCanvas.isDrawingMode = false
+    }
     // Tools that need canvas interaction (shapes, eyedropper, fill, etc.)
     else {
       fabricCanvas.isDrawingMode = false
@@ -947,8 +1118,11 @@ watch(
         width: newWidth,
         height: newHeight,
       })
-      // Wait for video canvas to render, then scale
-      setTimeout(() => scaleCanvasToFit(), 50)
+      // Wait for video to seek and render the first frame before scaling
+      // This ensures .frame-canvas has valid dimensions
+      await videoStore.waitForVideoSeek()
+      await nextTick()
+      scaleCanvasToFit()
       loadFrameDrawing()
     }
   }
@@ -988,7 +1162,20 @@ watch(
       width: drawingStore.canvasSize.width,
       height: drawingStore.canvasSize.height,
     })
-    scaleCanvasToFit()
+    
+    // Reset viewport to fit new canvas size
+    drawingStore.resetViewport()
+    fitToWidth()
+  }
+)
+
+// Watch for viewport changes
+watch(
+  () => [drawingStore.viewport.zoom, drawingStore.viewport.panX, drawingStore.viewport.panY],
+  () => {
+    if (!videoStore.hasVideo) {
+      applyViewportTransform()
+    }
   }
 )
 
@@ -1014,6 +1201,13 @@ function handleKeydown(e: KeyboardEvent) {
     drawingStore.setTool('line')
   } else if (e.key === 'v') {
     drawingStore.setTool('select')
+  } else if (e.key === 'h' || e.key === 'H') {
+    drawingStore.setTool('pan')
+  } else if (e.key === '0' && (e.ctrlKey || e.metaKey)) {
+    // Ctrl+0: Reset zoom to fit-to-width
+    e.preventDefault()
+    drawingStore.resetViewport()
+    fitToWidth()
   }
 }
 
@@ -1061,6 +1255,7 @@ defineExpose({
   undo,
   redo,
   clearCanvas,
+  fitToScreen,
 })
 </script>
 
@@ -1070,6 +1265,16 @@ defineExpose({
   inset: 0;
   background: transparent;
   overflow: hidden;
+}
+
+/* Pan cursor when pan tool is active */
+.drawing-canvas-container.pan-tool {
+  cursor: grab;
+}
+
+.drawing-canvas-container.pan-tool:active,
+.drawing-canvas-container.panning {
+  cursor: grabbing;
 }
 
 .drawing-canvas-container canvas {

@@ -13,6 +13,8 @@ export interface VideoState {
   cropRight: number
   cropBottom: number
   cropLeft: number
+  // Empty project mode (no video reference)
+  isEmptyProject: boolean
 }
 
 export type PreviewBackground = 'transparent' | 'white' | 'black' | 'gray' | 'custom'

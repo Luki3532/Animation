@@ -2,18 +2,29 @@
   <div class="app" :style="{ '--ui-scale': settingsStore.uiScale }">
     <header class="app-header">
       <div class="logo">FrameForge</div>
-      <nav class="header-nav" v-if="videoStore.hasVideo">
-        <label class="toggle-ref">
-          <input type="checkbox" v-model="showVideo" />
-          <span>Reference</span>
-        </label>
-        <div class="opacity-slider" v-if="showVideo">
-          <input type="range" min="10" max="90" v-model="videoOpacity" />
-          <span>{{ videoOpacity }}%</span>
-        </div>
-        <button class="crop-btn" @click="showCropPanel = !showCropPanel" :class="{ active: showCropPanel }">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
-          Crop
+      <nav class="header-nav" v-if="videoStore.hasProject">
+        <template v-if="videoStore.hasVideo">
+          <label class="toggle-ref">
+            <input type="checkbox" v-model="showVideo" />
+            <span>Reference</span>
+          </label>
+          <div class="opacity-slider" v-if="showVideo">
+            <input type="range" min="10" max="90" v-model="videoOpacity" />
+            <span>{{ videoOpacity }}%</span>
+          </div>
+          <button class="crop-btn" @click="showCropPanel = !showCropPanel" :class="{ active: showCropPanel }">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+            Crop
+          </button>
+        </template>
+        <span v-else class="project-type-badge">Empty Project</span>
+        <button class="fit-view-btn" @click="fitToScreen" title="Fit canvas to screen (Ctrl+0)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+          Fit
+        </button>
+        <button class="close-project-btn" @click="closeProject" title="Close project and return to start screen">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          Close
         </button>
       </nav>
     </header>
@@ -69,7 +80,7 @@
 
       <div class="workspace">
         <div class="canvas-area">
-          <!-- Only show video layer after video is loaded -->
+          <!-- Video project: show video layer and drawing layer -->
           <template v-if="videoStore.hasVideo">
             <div class="video-layer" :class="{ hidden: !showVideo }">
               <VideoPlayer ref="videoPlayer" />
@@ -79,7 +90,17 @@
             </div>
           </template>
           
-          <!-- Show upload zone when no video -->
+          <!-- Empty project: show empty canvas layer and drawing layer -->
+          <template v-else-if="videoStore.state.isEmptyProject">
+            <div class="empty-layer">
+              <VideoPlayer ref="videoPlayer" />
+            </div>
+            <div class="drawing-layer">
+              <DrawingCanvas ref="drawingCanvas" />
+            </div>
+          </template>
+          
+          <!-- No project: show upload zone -->
           <div v-else class="upload-layer">
             <VideoPlayer ref="videoPlayer" />
           </div>
@@ -231,6 +252,19 @@ function updateCrop(side: 'top' | 'bottom' | 'left' | 'right', event: Event) {
       videoStore.setCrop(cropTop, value, cropBottom, cropLeft)
       break
   }
+}
+
+function closeProject() {
+  // Clear video/project state
+  videoStore.clearVideo()
+  // Reset drawing state
+  drawingStore.resetViewport()
+  // Hide crop panel if open
+  showCropPanel.value = false
+}
+
+function fitToScreen() {
+  drawingCanvas.value?.fitToScreen()
 }
 
 // Apply video opacity as CSS variable
@@ -400,6 +434,7 @@ onUnmounted(() => {
 
 .sidebar-content {
   flex: 1;
+  min-height: 0; /* Critical for flex container scrolling */
   overflow-y: auto;
   overflow-x: hidden;
   transform: scale(var(--sidebar-scale, 1));
@@ -506,6 +541,24 @@ onUnmounted(() => {
   justify-content: center;
 }
 
+.empty-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-type-badge {
+  padding: 4px 10px;
+  background: #1a3a1a;
+  color: #7c7;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .status-bar {
   position: absolute;
   bottom: 8px;
@@ -545,6 +598,39 @@ onUnmounted(() => {
 .crop-btn.active {
   background: var(--accent);
   color: #fff;
+}
+
+.fit-view-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #252525;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #888;
+}
+
+.fit-view-btn:hover {
+  background: #333;
+  color: #fff;
+}
+
+.close-project-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #252525;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #888;
+  margin-left: auto;
+}
+
+.close-project-btn:hover {
+  background: #4a2020;
+  color: #ff6b6b;
 }
 
 .crop-panel {

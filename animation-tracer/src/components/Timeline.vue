@@ -1,5 +1,5 @@
 <template>
-  <div class="timeline" v-if="videoStore.hasVideo">
+  <div class="timeline" v-if="videoStore.hasProject">
     <div class="timeline-controls">
       <button @click="videoStore.previousFrame()" :disabled="videoStore.state.currentFrame === 0" title="Previous frame">
         <ChevronLeft :size="14" />
@@ -92,12 +92,57 @@
         />
       </label>
     </div>
+
+    <!-- Frame Management Controls (Empty Projects Only) -->
+    <div class="frame-management" v-if="videoStore.state.isEmptyProject">
+      <button class="frame-btn add-btn" @click="showAddFramesDialog = true" title="Add frames at end">
+        <PlusCircle :size="14" />
+        <span>Add</span>
+      </button>
+      <button class="frame-btn insert-btn" @click="showInsertFramesDialog = true" title="Insert frames after current">
+        <ArrowRightCircle :size="14" />
+        <span>Insert Here</span>
+      </button>
+    </div>
+
+    <!-- Add Frames Dialog -->
+    <div class="mini-dialog" v-if="showAddFramesDialog">
+      <div class="mini-dialog-backdrop" @click="showAddFramesDialog = false"></div>
+      <div class="mini-dialog-content">
+        <h4>Add Frames at End</h4>
+        <div class="dialog-row">
+          <label>Number of frames:</label>
+          <input type="number" v-model.number="addFrameCount" min="1" max="500" />
+        </div>
+        <div class="dialog-buttons">
+          <button class="cancel-btn" @click="showAddFramesDialog = false">Cancel</button>
+          <button class="confirm-btn" @click="confirmAddFrames">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Insert Frames Dialog -->
+    <div class="mini-dialog" v-if="showInsertFramesDialog">
+      <div class="mini-dialog-backdrop" @click="showInsertFramesDialog = false"></div>
+      <div class="mini-dialog-content">
+        <h4>Insert Frames After Frame {{ videoStore.state.currentFrame + 1 }}</h4>
+        <div class="dialog-row">
+          <label>Number of frames:</label>
+          <input type="number" v-model.number="insertFrameCount" min="1" max="500" />
+        </div>
+        <p class="dialog-hint">Existing drawings will be shifted forward.</p>
+        <div class="dialog-buttons">
+          <button class="cancel-btn" @click="showInsertFramesDialog = false">Cancel</button>
+          <button class="confirm-btn" @click="confirmInsertFrames">Insert</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Plus, Minus } from 'lucide-vue-next'
+import { ref, computed } from 'vue'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Plus, Minus, PlusCircle, ArrowRightCircle } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -105,6 +150,12 @@ import { useSettingsStore } from '../stores/settingsStore'
 const videoStore = useVideoStore()
 const drawingStore = useDrawingStore()
 const settingsStore = useSettingsStore()
+
+// Frame management dialogs state
+const showAddFramesDialog = ref(false)
+const showInsertFramesDialog = ref(false)
+const addFrameCount = ref(12)
+const insertFrameCount = ref(1)
 
 // Keyframe navigation
 const hasPrevKeyframe = computed(() => {
@@ -144,6 +195,25 @@ function onFpsChange(e: Event) {
   if (fps >= 1 && fps <= 60) {
     videoStore.setFps(fps)
   }
+}
+
+// Frame management functions
+function confirmAddFrames() {
+  if (addFrameCount.value > 0) {
+    videoStore.addFrames(addFrameCount.value)
+  }
+  showAddFramesDialog.value = false
+}
+
+function confirmInsertFrames() {
+  if (insertFrameCount.value > 0) {
+    const insertAt = videoStore.state.currentFrame + 1
+    // Shift existing drawings forward
+    drawingStore.shiftFrameDrawings(insertAt, insertFrameCount.value)
+    // Insert the frames in video store
+    videoStore.insertFramesAfterCurrent(insertFrameCount.value)
+  }
+  showInsertFramesDialog.value = false
 }
 </script>
 
@@ -369,5 +439,152 @@ function onFpsChange(e: Event) {
 .onion-separator {
   color: #444;
   font-size: 10px;
+}
+
+/* Frame Management Controls */
+.frame-management {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 1px solid #333;
+}
+
+.frame-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.frame-btn span {
+  display: none;
+}
+
+@media (min-width: 800px) {
+  .frame-btn span {
+    display: inline;
+  }
+}
+
+.add-btn {
+  background: #1a3a1a;
+  color: #7c7;
+  border: 1px solid #2a5a2a;
+}
+
+.add-btn:hover {
+  background: #2a4a2a;
+  border-color: #4a8a4a;
+}
+
+.insert-btn {
+  background: #1a2a3a;
+  color: #7ac;
+  border: 1px solid #2a4a5a;
+}
+
+.insert-btn:hover {
+  background: #2a3a4a;
+  border-color: #4a6a8a;
+}
+
+/* Mini Dialog */
+.mini-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mini-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.mini-dialog-content {
+  position: relative;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--vscode-panel-border, #333);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.mini-dialog-content h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dialog-row label {
+  font-size: 12px;
+  color: #888;
+}
+
+.dialog-row input {
+  width: 80px;
+  padding: 4px 8px;
+  background: var(--vscode-input-background, #252525);
+  border: 1px solid var(--vscode-input-border, #444);
+  border-radius: 4px;
+  color: var(--vscode-input-foreground, #fff);
+  font-size: 12px;
+}
+
+.dialog-hint {
+  font-size: 11px;
+  color: #888;
+  margin: 0 0 12px 0;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cancel-btn,
+.confirm-btn {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cancel-btn {
+  background: var(--vscode-button-secondaryBackground, #333);
+  border: 1px solid var(--vscode-button-border, #444);
+  color: var(--vscode-button-secondaryForeground, #ccc);
+}
+
+.cancel-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #444);
+}
+
+.confirm-btn {
+  background: var(--vscode-button-background, var(--accent));
+  border: none;
+  color: var(--vscode-button-foreground, #fff);
+}
+
+.confirm-btn:hover {
+  background: var(--vscode-button-hoverBackground, #f06b1a);
 }
 </style>

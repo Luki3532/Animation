@@ -136,6 +136,109 @@
       </div>
     </div>
 
+    <!-- Canvas Resize Controls -->
+    <div class="panel-section">
+      <h3>Canvas Resize</h3>
+      <p class="size-hint">Manually adjust the working canvas dimensions</p>
+      <div class="canvas-resize-controls">
+        <div class="resize-inputs">
+          <div class="resize-input-group">
+            <label>Width</label>
+            <div class="input-with-btns">
+              <button 
+                class="step-btn" 
+                @mousedown="startHoldAdjust('width', -10)" 
+                @mouseup="stopHoldAdjust" 
+                @mouseleave="stopHoldAdjust"
+                @touchstart.prevent="startHoldAdjust('width', -10)"
+                @touchend="stopHoldAdjust"
+                title="-10"
+              >
+                <Minus :size="10" />
+              </button>
+              <input
+                type="number"
+                v-model.number="resizeWidth"
+                @input="onResizeWidthChange"
+                min="8"
+                max="4096"
+              />
+              <button 
+                class="step-btn" 
+                @mousedown="startHoldAdjust('width', 10)" 
+                @mouseup="stopHoldAdjust" 
+                @mouseleave="stopHoldAdjust"
+                @touchstart.prevent="startHoldAdjust('width', 10)"
+                @touchend="stopHoldAdjust"
+                title="+10"
+              >
+                <Plus :size="10" />
+              </button>
+            </div>
+          </div>
+          <div class="resize-input-group">
+            <label>Height</label>
+            <div class="input-with-btns">
+              <button 
+                class="step-btn" 
+                @mousedown="startHoldAdjust('height', -10)" 
+                @mouseup="stopHoldAdjust" 
+                @mouseleave="stopHoldAdjust"
+                @touchstart.prevent="startHoldAdjust('height', -10)"
+                @touchend="stopHoldAdjust"
+                title="-10"
+              >
+                <Minus :size="10" />
+              </button>
+              <input
+                type="number"
+                v-model.number="resizeHeight"
+                @input="onResizeHeightChange"
+                min="8"
+                max="4096"
+              />
+              <button 
+                class="step-btn" 
+                @mousedown="startHoldAdjust('height', 10)" 
+                @mouseup="stopHoldAdjust" 
+                @mouseleave="stopHoldAdjust"
+                @touchstart.prevent="startHoldAdjust('height', 10)"
+                @touchend="stopHoldAdjust"
+                title="+10"
+              >
+                <Plus :size="10" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="resize-options">
+          <label class="checkbox-label" :class="{ disabled: !canEnableAspectLock }">
+            <input 
+              type="checkbox" 
+              v-model="aspectLockEnabled" 
+              :disabled="!canEnableAspectLock"
+            />
+            <Lock :size="14" v-if="aspectLockEnabled" />
+            <Unlock :size="14" v-else />
+            <span>Lock Aspect Ratio</span>
+          </label>
+          <span v-if="aspectLockEnabled" class="aspect-ratio-display">
+            {{ aspectRatioDisplay }}
+          </span>
+        </div>
+        <div class="resize-actions">
+          <button class="resize-btn" @click="applyCanvasResize" :disabled="!hasCanvasChanges">
+            <Check :size="14" />
+            Apply Resize
+          </button>
+          <button class="reset-btn" @click="resetCanvasSize" :disabled="!hasCanvasChanges">
+            <RotateCcw :size="14" />
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="panel-section">
       <h3>Export Options</h3>
       <div class="export-info">
@@ -212,7 +315,13 @@ import {
   Image as ImageIcon,
   Settings,
   Crop,
-  Maximize
+  Maximize,
+  Plus,
+  Minus,
+  Lock,
+  Unlock,
+  Check,
+  RotateCcw
 } from 'lucide-vue-next'
 import CustomExportDialog from './CustomExportDialog.vue'
 import { saveExportPrefs, loadExportPrefs } from '../services/persistenceService'
@@ -225,6 +334,148 @@ const customHeight = ref(128)
 const padding = ref(1)
 const previewUrl = ref('')
 const isCustomExportOpen = ref(false)
+
+// Canvas resize state
+const resizeWidth = ref(drawingStore.canvasSize.width)
+const resizeHeight = ref(drawingStore.canvasSize.height)
+const aspectLockEnabled = ref(false)
+const aspectRatio = ref(1)
+
+// Initialize resize values from current canvas size
+watch(() => drawingStore.canvasSize, (newSize) => {
+  resizeWidth.value = newSize.width
+  resizeHeight.value = newSize.height
+  if (aspectLockEnabled.value) {
+    aspectRatio.value = newSize.width / newSize.height
+  }
+}, { immediate: true })
+
+// Computed properties for canvas resize
+const canEnableAspectLock = computed(() => {
+  return resizeWidth.value > 0 && resizeHeight.value > 0
+})
+
+const hasCanvasChanges = computed(() => {
+  return resizeWidth.value !== drawingStore.canvasSize.width ||
+         resizeHeight.value !== drawingStore.canvasSize.height
+})
+
+const aspectRatioDisplay = computed(() => {
+  // Show the locked aspect ratio (simplified)
+  const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b)
+  // Use the stored aspect ratio to derive the display
+  const ratio = aspectRatio.value
+  if (ratio <= 0) return '1:1'
+  // Find a nice representation
+  // Multiply by common factor to get whole numbers
+  let w = ratio
+  let h = 1
+  // Try to find simple integer representation
+  for (const mult of [1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 16]) {
+    const testW = ratio * mult
+    if (Math.abs(testW - Math.round(testW)) < 0.01) {
+      w = Math.round(testW)
+      h = mult
+      break
+    }
+  }
+  const divisor = gcd(Math.round(w), Math.round(h))
+  return `${Math.round(w / divisor)}:${Math.round(h / divisor)}`
+})
+
+// Hold-to-adjust state
+let holdInterval: number | null = null
+let holdTimeout: number | null = null
+
+function startHoldAdjust(dimension: 'width' | 'height', delta: number) {
+  // Immediately apply once
+  if (dimension === 'width') {
+    adjustCanvasWidth(delta)
+  } else {
+    adjustCanvasHeight(delta)
+  }
+  
+  // Start repeating after a short delay
+  holdTimeout = window.setTimeout(() => {
+    holdInterval = window.setInterval(() => {
+      if (dimension === 'width') {
+        adjustCanvasWidth(delta)
+      } else {
+        adjustCanvasHeight(delta)
+      }
+    }, 50) // Repeat every 50ms while held
+  }, 300) // Initial delay before repeating
+}
+
+function stopHoldAdjust() {
+  if (holdTimeout) {
+    clearTimeout(holdTimeout)
+    holdTimeout = null
+  }
+  if (holdInterval) {
+    clearInterval(holdInterval)
+    holdInterval = null
+  }
+}
+
+// Canvas resize functions
+function onResizeWidthChange() {
+  if (aspectLockEnabled.value && aspectRatio.value > 0) {
+    resizeHeight.value = Math.round(resizeWidth.value / aspectRatio.value)
+  }
+}
+
+function onResizeHeightChange() {
+  if (aspectLockEnabled.value && aspectRatio.value > 0) {
+    resizeWidth.value = Math.round(resizeHeight.value * aspectRatio.value)
+  }
+}
+
+function adjustCanvasWidth(delta: number) {
+  resizeWidth.value = Math.max(8, Math.min(4096, resizeWidth.value + delta))
+  if (aspectLockEnabled.value && aspectRatio.value > 0) {
+    resizeHeight.value = Math.round(resizeWidth.value / aspectRatio.value)
+  }
+}
+
+function adjustCanvasHeight(delta: number) {
+  resizeHeight.value = Math.max(8, Math.min(4096, resizeHeight.value + delta))
+  if (aspectLockEnabled.value && aspectRatio.value > 0) {
+    resizeWidth.value = Math.round(resizeHeight.value * aspectRatio.value)
+  }
+}
+
+function applyCanvasResize() {
+  const w = Math.max(8, Math.min(4096, resizeWidth.value))
+  const h = Math.max(8, Math.min(4096, resizeHeight.value))
+  drawingStore.setCanvasSize({
+    width: w,
+    height: h,
+    label: `${w}×${h}`
+  })
+  // Update aspect ratio when manually applying
+  aspectRatio.value = w / h
+  
+  // For empty projects, also update video store dimensions
+  if (videoStore.state.isEmptyProject) {
+    videoStore.setProjectDimensions(w, h)
+    // Reset viewport to fit new size
+    drawingStore.resetViewport()
+  }
+}
+
+function resetCanvasSize() {
+  resizeWidth.value = drawingStore.canvasSize.width
+  resizeHeight.value = drawingStore.canvasSize.height
+  aspectRatio.value = drawingStore.canvasSize.width / drawingStore.canvasSize.height
+}
+
+// Watch for aspect lock changes to update ratio
+watch(aspectLockEnabled, (enabled) => {
+  if (enabled && resizeWidth.value > 0 && resizeHeight.value > 0) {
+    aspectRatio.value = resizeWidth.value / resizeHeight.value
+  }
+})
 
 // Animation preview state
 const isPlaying = ref(true)
@@ -826,5 +1077,151 @@ async function handleCustomExport(options: CustomExportOptions) {
   color: #555;
   margin-left: auto;
   font-variant-numeric: tabular-nums;
+}
+
+/* Canvas Resize Controls */
+.canvas-resize-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resize-inputs {
+  display: flex;
+  gap: 12px;
+}
+
+.resize-input-group {
+  flex: 1;
+}
+
+.resize-input-group label {
+  display: block;
+  font-size: 10px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.input-with-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.input-with-btns input {
+  flex: 1;
+  width: 50px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.step-btn {
+  width: 22px;
+  height: 24px;
+  padding: 0;
+  background: #252525;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+}
+
+.step-btn:hover {
+  background: #333;
+  color: #fff;
+}
+
+.resize-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+}
+
+.checkbox-label:hover {
+  color: #fff;
+}
+
+.checkbox-label.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.checkbox-label.disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+
+.aspect-ratio-display {
+  font-size: 10px;
+  color: #555;
+  background: #1a1a1a;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.resize-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.resize-btn,
+.reset-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.resize-btn {
+  background: #2a6;
+  color: #fff;
+}
+
+.resize-btn:hover:not(:disabled) {
+  background: #3b7;
+}
+
+.resize-btn:disabled {
+  background: #333;
+  color: #555;
+  cursor: not-allowed;
+}
+
+.reset-btn {
+  background: #333;
+  color: #888;
+}
+
+.reset-btn:hover:not(:disabled) {
+  background: #444;
+  color: #fff;
+}
+
+.reset-btn:disabled {
+  background: #252525;
+  color: #444;
+  cursor: not-allowed;
 }
 </style>
