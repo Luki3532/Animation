@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { FrameDrawing, ToolSettings, CanvasSize, ViewportState } from '../types/drawing'
+import type { FrameDrawing, ToolSettings, CanvasSize, ViewportState, BrushType } from '../types/drawing'
 import { CANVAS_SIZES } from '../types/drawing'
 import { 
   saveDrawingData, 
@@ -17,7 +17,8 @@ export const useDrawingStore = defineStore('drawing', () => {
     tool: 'pen',
     color: '#000000',
     brushSize: 5,
-    opacity: 1
+    opacity: 1,
+    brushType: 'round'
   })
   
   // Canvas size
@@ -108,6 +109,10 @@ export const useDrawingStore = defineStore('drawing', () => {
   
   function setOpacity(opacity: number) {
     toolSettings.value.opacity = opacity
+  }
+  
+  function setBrushType(brushType: ToolSettings['brushType']) {
+    toolSettings.value.brushType = brushType
   }
   
   function setCanvasSize(size: CanvasSize) {
@@ -231,6 +236,7 @@ export const useDrawingStore = defineStore('drawing', () => {
     setColor,
     setBrushSize,
     setOpacity,
+    setBrushType,
     setCanvasSize,
     setHoveredHint,
     pushHistory,

@@ -47,6 +47,29 @@
       <span class="size-value">{{ drawingStore.toolSettings.brushSize }}px</span>
     </div>
 
+    <div class="tool-section brush-palette-section">
+      <h3 
+        class="collapsible-header"
+        @click="brushPaletteCollapsed = !brushPaletteCollapsed"
+      >
+        <span>Brush Type</span>
+        <ChevronDown :size="14" :class="{ rotated: brushPaletteCollapsed }" />
+      </h3>
+      <div class="brush-palette" v-show="!brushPaletteCollapsed">
+        <button
+          v-for="brush in brushTypes"
+          :key="brush.id"
+          :class="{ active: drawingStore.toolSettings.brushType === brush.id }"
+          @click="drawingStore.setBrushType(brush.id)"
+          @mouseenter="drawingStore.setHoveredHint(brush.name)"
+          @mouseleave="drawingStore.setHoveredHint('')"
+          class="brush-preview"
+        >
+          <div class="brush-shape" :class="brush.id"></div>
+        </button>
+      </div>
+    </div>
+
     <div class="tool-section">
       <h3>Opacity</h3>
       <input
@@ -84,14 +107,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Undo2, Redo2, Trash2 } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import { Undo2, Redo2, Trash2, ChevronDown } from 'lucide-vue-next'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useSettingsStore } from '../stores/settingsStore'
-import type { ToolSettings } from '../types/drawing'
+import type { ToolSettings, BrushType } from '../types/drawing'
 
 const drawingStore = useDrawingStore()
 const settingsStore = useSettingsStore()
+
+// Collapsible state for brush palette (starts collapsed/minimized)
+const brushPaletteCollapsed = ref(true)
 
 const emit = defineEmits<{
   undo: []
@@ -105,6 +131,24 @@ interface Tool {
   hotkey: string
   icon: string
 }
+
+interface BrushTypeItem {
+  id: BrushType
+  name: string
+}
+
+// MS Paint-style brush types
+const brushTypes: BrushTypeItem[] = [
+  { id: 'round', name: 'Round Brush' },
+  { id: 'square', name: 'Square Brush' },
+  { id: 'slash-right', name: 'Forward Slash (/)' },
+  { id: 'slash-left', name: 'Back Slash (\\)' },
+  { id: 'calligraphy', name: 'Calligraphy' },
+  { id: 'oil', name: 'Oil Brush' },
+  { id: 'crayon', name: 'Crayon' },
+  { id: 'marker', name: 'Marker' },
+  { id: 'pencil-tip', name: 'Pencil Tip' },
+]
 
 // Basic tools (default mode) - using Lucide icons (https://lucide.dev)
 const basicTools: Tool[] = [
@@ -306,5 +350,152 @@ input[type="range"] {
 .action-buttons button.danger:hover {
   background: #e85d04;
   color: #fff;
+}
+
+/* Collapsible header styles */
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.collapsible-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.collapsible-header svg {
+  transition: transform 0.2s ease;
+  color: #666;
+}
+
+.collapsible-header svg.rotated {
+  transform: rotate(-90deg);
+}
+
+/* MS Paint Brush Palette Styles */
+.brush-palette-section {
+  margin-top: 4px;
+}
+
+.brush-palette {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  background: #1a1a1a;
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid #333;
+}
+
+.brush-preview {
+  aspect-ratio: 1;
+  background: #252525;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.brush-preview:hover {
+  background: #333;
+  border-color: #555;
+}
+
+.brush-preview.active {
+  background: var(--accent, #e85d04);
+  border-color: var(--accent, #e85d04);
+}
+
+.brush-shape {
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  color: #888;
+}
+
+.brush-preview:hover .brush-shape,
+.brush-preview.active .brush-shape {
+  color: #fff;
+}
+
+/* Round brush - circle */
+.brush-shape.round {
+  border-radius: 50%;
+}
+
+/* Square brush - no border radius */
+.brush-shape.square {
+  border-radius: 0;
+}
+
+/* Forward slash brush */
+.brush-shape.slash-right {
+  width: 4px;
+  height: 18px;
+  transform: rotate(-45deg);
+  border-radius: 2px;
+}
+
+/* Back slash brush */
+.brush-shape.slash-left {
+  width: 4px;
+  height: 18px;
+  transform: rotate(45deg);
+  border-radius: 2px;
+}
+
+/* Calligraphy brush - diagonal oval */
+.brush-shape.calligraphy {
+  width: 6px;
+  height: 18px;
+  border-radius: 3px;
+  transform: rotate(-30deg);
+}
+
+/* Oil brush - soft circle with glow effect */
+.brush-shape.oil {
+  border-radius: 50%;
+  box-shadow: 0 0 4px currentColor, 0 0 8px currentColor;
+  opacity: 0.9;
+}
+
+/* Crayon - rough textured edge */
+.brush-shape.crayon {
+  border-radius: 2px;
+  background: linear-gradient(135deg, 
+    currentColor 0%, 
+    transparent 20%, 
+    currentColor 25%,
+    transparent 40%,
+    currentColor 45%,
+    transparent 60%,
+    currentColor 65%,
+    transparent 80%,
+    currentColor 100%
+  );
+}
+
+/* Marker - rounded rectangle with transparency hint */
+.brush-shape.marker {
+  border-radius: 4px;
+  width: 12px;
+  height: 18px;
+  opacity: 0.7;
+}
+
+/* Pencil tip - small diamond/point */
+.brush-shape.pencil-tip {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  border-radius: 1px;
 }
 </style>

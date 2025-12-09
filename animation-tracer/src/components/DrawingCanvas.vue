@@ -24,10 +24,80 @@ import { Canvas, PencilBrush, SprayBrush, Circle, Rect, Line, Polygon, Path, Fab
 import { useDrawingStore } from '../stores/drawingStore'
 import { useVideoStore } from '../stores/videoStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import type { BrushType } from '../types/drawing'
 
 const drawingStore = useDrawingStore()
 const videoStore = useVideoStore()
 const settingsStore = useSettingsStore()
+
+// Helper function to create and configure a brush based on brush type
+function createBrush(canvas: Canvas, color: string, width: number, brushType: BrushType): PencilBrush {
+  const brush = new PencilBrush(canvas)
+  brush.color = color
+  brush.width = width
+  
+  // Configure brush properties based on brush type
+  switch (brushType) {
+    case 'round':
+      // Default round brush
+      brush.strokeLineCap = 'round'
+      brush.strokeLineJoin = 'round'
+      break
+      
+    case 'square':
+      // Square/pixel brush
+      brush.strokeLineCap = 'square'
+      brush.strokeLineJoin = 'miter'
+      break
+      
+    case 'slash-right':
+    case 'slash-left':
+      // Angled brushes - use butt cap for sharper edges
+      brush.strokeLineCap = 'butt'
+      brush.strokeLineJoin = 'bevel'
+      break
+      
+    case 'calligraphy':
+      // Calligraphy - varies width, use round for smooth flow
+      brush.strokeLineCap = 'round'
+      brush.strokeLineJoin = 'round'
+      // Slightly reduce width for calligraphy effect
+      brush.width = width * 0.7
+      break
+      
+    case 'oil':
+      // Oil brush - soft edges
+      brush.strokeLineCap = 'round'
+      brush.strokeLineJoin = 'round'
+      brush.width = width * 1.2
+      break
+      
+    case 'crayon':
+      // Crayon - rough edges simulated with round
+      brush.strokeLineCap = 'round'
+      brush.strokeLineJoin = 'round'
+      break
+      
+    case 'marker':
+      // Marker - square cap for marker feel
+      brush.strokeLineCap = 'square'
+      brush.strokeLineJoin = 'round'
+      break
+      
+    case 'pencil-tip':
+      // Pencil tip - small and precise
+      brush.strokeLineCap = 'round'
+      brush.strokeLineJoin = 'round'
+      brush.width = width * 0.5
+      break
+      
+    default:
+      brush.strokeLineCap = 'round'
+      brush.strokeLineJoin = 'round'
+  }
+  
+  return brush
+}
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -112,10 +182,13 @@ function initCanvas() {
     renderOnAddRemove: true,
   })
 
-  // Create custom brush that doesn't shift paths
-  const brush = new PencilBrush(fabricCanvas)
-  brush.color = drawingStore.toolSettings.color
-  brush.width = drawingStore.toolSettings.brushSize
+  // Create custom brush that doesn't shift paths (using MS Paint brush type)
+  const brush = createBrush(
+    fabricCanvas, 
+    drawingStore.toolSettings.color, 
+    drawingStore.toolSettings.brushSize, 
+    drawingStore.toolSettings.brushType
+  )
   ;(brush as any).decimate = 0 // Prevent point reduction
   
   // Override the _finalizeAndAddPath to prevent path repositioning
@@ -1045,18 +1118,14 @@ watch(
     // Pencil tool - basic pixel-art style pencil
     if (settings.tool === 'pen' || settings.tool === 'pencil') {
       fabricCanvas.isDrawingMode = true
-      const brush = new PencilBrush(fabricCanvas)
-      brush.color = settings.color
-      brush.width = settings.brushSize
+      const brush = createBrush(fabricCanvas, settings.color, settings.brushSize, settings.brushType)
       applyBrushSmoothing(brush)
       fabricCanvas.freeDrawingBrush = brush
     }
     // Brush tool - smooth brush strokes
     else if (settings.tool === 'brush') {
       fabricCanvas.isDrawingMode = true
-      const brush = new PencilBrush(fabricCanvas)
-      brush.color = settings.color
-      brush.width = settings.brushSize * 1.5 // Slightly larger
+      const brush = createBrush(fabricCanvas, settings.color, settings.brushSize * 1.5, settings.brushType)
       applyBrushSmoothing(brush)
       fabricCanvas.freeDrawingBrush = brush
     }
@@ -1072,15 +1141,9 @@ watch(
     // Eraser
     else if (settings.tool === 'eraser') {
       fabricCanvas.isDrawingMode = true
-      const brush = new PencilBrush(fabricCanvas)
-      brush.color = 'rgba(0,0,0,0)' // Transparent for true erasing
-      brush.width = settings.brushSize * 2
+      const brush = createBrush(fabricCanvas, '#ffffff', settings.brushSize * 2, settings.brushType)
       applyBrushSmoothing(brush)
-      // Use destination-out composite for true erasing
       fabricCanvas.freeDrawingBrush = brush
-      // Note: True erasing requires custom implementation
-      // For now we use white which works on white backgrounds
-      brush.color = '#ffffff'
     }
     // Selection/Move tool
     else if (settings.tool === 'select') {

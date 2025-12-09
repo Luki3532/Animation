@@ -4,11 +4,24 @@ export interface FrameDrawing {
   thumbnail: string
 }
 
+// MS Paint-style brush types
+export type BrushType = 
+  | 'round'      // Default round brush
+  | 'square'     // Square/pixel brush
+  | 'slash-right'// Forward slash brush (/)
+  | 'slash-left' // Back slash brush (\)
+  | 'calligraphy'// Calligraphy brush (diagonal oval)
+  | 'oil'        // Oil brush (soft edges)
+  | 'crayon'     // Crayon texture
+  | 'marker'     // Marker (semi-transparent)
+  | 'pencil-tip' // Pencil tip (small point)
+
 export interface ToolSettings {
   tool: 'pen' | 'eraser' | 'rectangle' | 'circle' | 'line' | 'select' | 'pencil' | 'brush' | 'spray' | 'fill' | 'eyedropper' | 'marquee' | 'lasso' | 'contour' | 'polygon' | 'curve' | 'pan'
   color: string
   brushSize: number
   opacity: number
+  brushType: BrushType
 }
 
 export interface ViewportState {
