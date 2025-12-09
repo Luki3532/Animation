@@ -45,6 +45,15 @@
           />
         </div>
       </div>
+      <div class="bg-color-row">
+        <span class="bg-label">Canvas BG</span>
+        <input
+          type="color"
+          :value="settingsStore.canvasBackgroundColor"
+          @input="onBgColorChange"
+          class="bg-color-picker"
+        />
+      </div>
     </div>
 
     <!-- Brush Settings Section -->
@@ -262,6 +271,11 @@ function onOpacityChange(e: Event) {
   const input = e.target as HTMLInputElement
   drawingStore.setOpacity(parseInt(input.value) / 100)
 }
+
+function onBgColorChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  settingsStore.setCanvasBackgroundColor(input.value)
+}
 </script>
 
 <style scoped>
@@ -402,6 +416,40 @@ function onOpacityChange(e: Event) {
 .color-preset.active {
   border-color: #fff;
   box-shadow: 0 0 0 1px #fff;
+}
+
+.bg-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #333;
+}
+
+.bg-label {
+  font-size: 10px;
+  color: #888;
+  flex: 1;
+}
+
+.bg-color-picker {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  border: 2px solid #333;
+  flex-shrink: 0;
+}
+
+.bg-color-picker::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+
+.bg-color-picker::-webkit-color-swatch {
+  border-radius: 2px;
+  border: none;
 }
 
 /* Brush Controls */

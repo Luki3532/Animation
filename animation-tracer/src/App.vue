@@ -1,5 +1,9 @@
 <template>
-  <div class="app" :style="{ '--ui-scale': settingsStore.uiScale }">
+  <!-- Mobile Mode -->
+  <MobileApp v-if="settingsStore.isMobileMode" />
+  
+  <!-- Desktop Mode -->
+  <div v-else class="app" :style="{ '--ui-scale': settingsStore.uiScale }">
     <header class="app-header">
       <div class="logo">FrameForge</div>
       
@@ -230,6 +234,9 @@
       <Timeline />
     </footer>
   </div>
+  
+  <!-- Mobile Mode Detection Dialog -->
+  <MobileModeDialog />
 </template>
 
 <script setup lang="ts">
@@ -242,6 +249,8 @@ import SettingsPanel from './components/SettingsPanel.vue'
 import Timeline from './components/Timeline.vue'
 import CheckpointPanel from './components/CheckpointPanel.vue'
 import VideoReconnectDialog from './components/VideoReconnectDialog.vue'
+import MobileApp from './components/mobile/MobileApp.vue'
+import MobileModeDialog from './components/MobileModeDialog.vue'
 import { useVideoStore } from './stores/videoStore'
 import { useDrawingStore } from './stores/drawingStore'
 import { useSettingsStore } from './stores/settingsStore'
@@ -466,12 +475,32 @@ onMounted(async () => {
     videoStore.initFromStorage()
   ])
   
+  // Mobile detection
+  detectMobileDevice()
+  checkMobileViewport()
+  window.addEventListener('resize', checkMobileViewport)
+  
   window.addEventListener('keydown', handleGlobalKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('resize', checkMobileViewport)
 })
+
+// Mobile detection functions
+function detectMobileDevice() {
+  // Check for touch-primary device using media query
+  const isTouchDevice = window.matchMedia('(pointer: coarse)').matches
+  // Also check user agent for mobile devices
+  const isMobileUA = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  settingsStore.setMobileDevice(isTouchDevice || isMobileUA)
+}
+
+function checkMobileViewport() {
+  const isMobileWidth = window.innerWidth <= 768
+  settingsStore.setMobileViewport(isMobileWidth)
+}
 </script>
 
 <style scoped>

@@ -11,6 +11,10 @@
     @mousemove="handleContainerMouseMove"
     @mouseup="handleContainerMouseUp"
     @mouseleave="handleContainerMouseUp"
+    @touchstart.prevent="handleTouchStart"
+    @touchmove.prevent="handleTouchMove"
+    @touchend.prevent="handleTouchEnd"
+    @touchcancel.prevent="handleTouchEnd"
   >
     <!-- Onion skin overlay (rendered below main canvas) -->
     <canvas ref="onionCanvasRef" class="onion-canvas" />
@@ -479,6 +483,128 @@ function handleContainerMouseUp(_e: MouseEvent) {
     isPanning = false
     isPanningRef.value = false
   }
+}
+
+// Touch event handling for mobile/tablet devices
+let touchStartDistance = 0 // For pinch-to-zoom
+let isTouchDrawing = false
+let touchPinching = false
+
+function handleTouchStart(e: TouchEvent) {
+  if (!fabricCanvas) return
+  
+  if (e.touches.length === 2) {
+    // Two fingers: start pinch-to-zoom
+    touchPinching = true
+    touchStartDistance = getTouchDistance(e.touches)
+    panStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+    panStartY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+    panStartViewportX = drawingStore.viewport.panX
+    panStartViewportY = drawingStore.viewport.panY
+  } else if (e.touches.length === 1) {
+    // Single finger: draw
+    const touch = e.touches[0]
+    const rect = containerRef.value?.getBoundingClientRect()
+    if (!rect) return
+    
+    // Simulate mouse event for fabric canvas
+    const mouseEvent = new MouseEvent('mousedown', {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      button: 0
+    })
+    
+    // If pan tool, handle panning
+    if (drawingStore.toolSettings.tool === 'pan') {
+      isPanning = true
+      isPanningRef.value = true
+      panStartX = touch.clientX
+      panStartY = touch.clientY
+      panStartViewportX = drawingStore.viewport.panX
+      panStartViewportY = drawingStore.viewport.panY
+    } else {
+      // Trigger fabric canvas drawing
+      isTouchDrawing = true
+      fabricCanvas.fire('mouse:down', { e: mouseEvent, pointer: fabricCanvas.getScenePoint(mouseEvent) })
+    }
+  }
+}
+
+function handleTouchMove(e: TouchEvent) {
+  if (!fabricCanvas) return
+  
+  if (touchPinching && e.touches.length === 2) {
+    // Pinch-to-zoom
+    const currentDistance = getTouchDistance(e.touches)
+    const scale = currentDistance / touchStartDistance
+    
+    // Calculate center point
+    const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2
+    const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+    
+    // Apply zoom
+    const newZoom = Math.max(0.1, Math.min(10, drawingStore.viewport.zoom * scale))
+    drawingStore.setZoom(newZoom)
+    
+    // Pan to follow fingers
+    const panDeltaX = centerX - panStartX
+    const panDeltaY = centerY - panStartY
+    drawingStore.setPan(panStartViewportX + panDeltaX, panStartViewportY + panDeltaY)
+    
+    applyViewportTransform()
+    touchStartDistance = currentDistance
+    panStartX = centerX
+    panStartY = centerY
+    panStartViewportX = drawingStore.viewport.panX
+    panStartViewportY = drawingStore.viewport.panY
+  } else if (isPanning && e.touches.length === 1) {
+    // Panning with pan tool
+    const touch = e.touches[0]
+    const deltaX = touch.clientX - panStartX
+    const deltaY = touch.clientY - panStartY
+    drawingStore.setPan(panStartViewportX + deltaX, panStartViewportY + deltaY)
+    applyViewportTransform()
+  } else if (isTouchDrawing && e.touches.length === 1) {
+    // Drawing
+    const touch = e.touches[0]
+    const mouseEvent = new MouseEvent('mousemove', {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      button: 0
+    })
+    fabricCanvas.fire('mouse:move', { e: mouseEvent, pointer: fabricCanvas.getScenePoint(mouseEvent) })
+  }
+}
+
+function handleTouchEnd(e: TouchEvent) {
+  if (!fabricCanvas) return
+  
+  if (touchPinching) {
+    touchPinching = false
+    touchStartDistance = 0
+  }
+  
+  if (isTouchDrawing) {
+    // Complete the drawing stroke
+    const mouseEvent = new MouseEvent('mouseup', {
+      clientX: 0,
+      clientY: 0,
+      button: 0
+    })
+    fabricCanvas.fire('mouse:up', { e: mouseEvent })
+    isTouchDrawing = false
+  }
+  
+  if (isPanning) {
+    isPanning = false
+    isPanningRef.value = false
+  }
+}
+
+function getTouchDistance(touches: TouchList): number {
+  const dx = touches[0].clientX - touches[1].clientX
+  const dy = touches[0].clientY - touches[1].clientY
+  return Math.sqrt(dx * dx + dy * dy)
 }
 
 function onMouseDown(opt: any) {
@@ -1339,6 +1465,10 @@ defineExpose({
   inset: 0;
   background: transparent;
   overflow: hidden;
+  touch-action: none; /* Prevent browser handling of touch events */
+  -webkit-touch-callout: none; /* Disable callout on iOS */
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .drawing-canvas-container canvas {

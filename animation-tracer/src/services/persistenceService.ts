@@ -18,7 +18,11 @@ const KEYS = {
   VIDEO_FILE_HANDLE: 'frameforge_videoFileHandle',
   
   // Export preferences
-  EXPORT_PREFS: 'frameforge_exportPrefs'
+  EXPORT_PREFS: 'frameforge_exportPrefs',
+  
+  // Mobile mode
+  MOBILE_MODE: 'frameforge_mobileMode',
+  MOBILE_PROMPT_DISMISSED: 'frameforge_mobilePromptDismissed'
 }
 
 // Debounce helper
@@ -237,4 +241,34 @@ export async function loadVideoFileHandle(): Promise<unknown> {
 
 export async function clearVideoFileHandle(): Promise<void> {
   await del(KEYS.VIDEO_FILE_HANDLE)
+}
+
+// ============ Mobile Mode Persistence ============
+
+export async function saveMobileMode(enabled: boolean): Promise<void> {
+  await set(KEYS.MOBILE_MODE, enabled)
+}
+
+export async function loadMobileMode(): Promise<boolean | null> {
+  try {
+    const value = await get<boolean>(KEYS.MOBILE_MODE)
+    return value ?? null
+  } catch (error) {
+    console.error('Failed to load mobile mode:', error)
+    return null
+  }
+}
+
+export async function saveMobilePromptDismissed(dismissed: boolean): Promise<void> {
+  await set(KEYS.MOBILE_PROMPT_DISMISSED, dismissed)
+}
+
+export async function loadMobilePromptDismissed(): Promise<boolean> {
+  try {
+    const value = await get<boolean>(KEYS.MOBILE_PROMPT_DISMISSED)
+    return value ?? false
+  } catch (error) {
+    console.error('Failed to load mobile prompt dismissed:', error)
+    return false
+  }
 }

@@ -7,6 +7,10 @@ import {
   loadKeyMappings,
   saveOnionSkinSettings,
   loadOnionSkinSettings,
+  saveMobileMode,
+  loadMobileMode,
+  saveMobilePromptDismissed,
+  loadMobilePromptDismissed,
   debounce
 } from '../services/persistenceService'
 
@@ -47,6 +51,16 @@ export const useSettingsStore = defineStore('settings', () => {
   const onionSkinColorBefore = ref('#ff0000')
   const onionSkinColorAfter = ref('#0000ff')
   const onionSkinKeyframesOnly = ref(false)
+  
+  // Mobile mode settings
+  const isMobileMode = ref(false)
+  const mobilePromptDismissed = ref(false)
+  const isMobileDevice = ref(false)
+  const isMobileViewport = ref(false)
+  const showMobileVideoOverlay = ref(false)
+  
+  // Canvas background color (for preview, not export)
+  const canvasBackgroundColor = ref('#1a1a1a')
   
   // Persistence state
   const isLoaded = ref(false)
@@ -95,10 +109,12 @@ export const useSettingsStore = defineStore('settings', () => {
   
   // Initialize from storage
   async function initFromStorage() {
-    const [savedSettings, savedKeyMappings, savedOnionSkin] = await Promise.all([
+    const [savedSettings, savedKeyMappings, savedOnionSkin, savedMobileMode, savedMobilePromptDismissed] = await Promise.all([
       loadSettingsData(),
       loadKeyMappings(),
-      loadOnionSkinSettings()
+      loadOnionSkinSettings(),
+      loadMobileMode(),
+      loadMobilePromptDismissed()
     ])
     
     if (savedSettings) {
@@ -130,6 +146,12 @@ export const useSettingsStore = defineStore('settings', () => {
       onionSkinColorAfter.value = savedOnionSkin.colorAfter
       onionSkinKeyframesOnly.value = savedOnionSkin.keyframesOnly
     }
+    
+    // Load mobile settings
+    if (savedMobileMode !== null) {
+      isMobileMode.value = savedMobileMode
+    }
+    mobilePromptDismissed.value = savedMobilePromptDismissed
     
     isLoaded.value = true
   }
@@ -290,6 +312,46 @@ export const useSettingsStore = defineStore('settings', () => {
     onionSkinKeyframesOnly.value = enabled
   }
   
+  // Mobile mode actions
+  function setMobileDevice(isMobile: boolean) {
+    isMobileDevice.value = isMobile
+  }
+  
+  function setMobileViewport(isMobile: boolean) {
+    isMobileViewport.value = isMobile
+  }
+  
+  function enableMobileMode() {
+    isMobileMode.value = true
+    mobilePromptDismissed.value = true
+    saveMobileMode(true)
+    saveMobilePromptDismissed(true)
+  }
+  
+  function disableMobileMode() {
+    isMobileMode.value = false
+    saveMobileMode(false)
+  }
+  
+  function dismissMobilePrompt() {
+    mobilePromptDismissed.value = true
+    saveMobilePromptDismissed(true)
+  }
+  
+  function toggleMobileVideoOverlay() {
+    showMobileVideoOverlay.value = !showMobileVideoOverlay.value
+  }
+  
+  function setCanvasBackgroundColor(color: string) {
+    canvasBackgroundColor.value = color
+  }
+  
+  function shouldShowMobilePrompt() {
+    return (isMobileDevice.value || isMobileViewport.value) && 
+           !mobilePromptDismissed.value && 
+           !isMobileMode.value
+  }
+  
   return {
     remapMode,
     artistControls,
@@ -339,6 +401,21 @@ export const useSettingsStore = defineStore('settings', () => {
     setOnionSkinOpacityAfter,
     setOnionSkinColorBefore,
     setOnionSkinColorAfter,
-    setOnionSkinKeyframesOnly
+    setOnionSkinKeyframesOnly,
+    // Mobile mode
+    isMobileMode,
+    mobilePromptDismissed,
+    isMobileDevice,
+    isMobileViewport,
+    showMobileVideoOverlay,
+    canvasBackgroundColor,
+    setMobileDevice,
+    setMobileViewport,
+    enableMobileMode,
+    disableMobileMode,
+    dismissMobilePrompt,
+    toggleMobileVideoOverlay,
+    setCanvasBackgroundColor,
+    shouldShowMobilePrompt
   }
 })
