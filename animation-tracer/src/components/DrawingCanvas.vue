@@ -37,9 +37,16 @@ const settingsStore = useSettingsStore()
 // Helper function to create and configure a brush based on brush type
 function createBrush(canvas: Canvas, color: string, width: number, brushType: BrushType): PencilBrush {
   const brush = new PencilBrush(canvas)
-  brush.color = color
-  brush.width = width
-  
+  // Eraser tool: use destination-out for true erasing
+  if (drawingStore.toolSettings.tool === 'eraser') {
+    brush.color = 'rgba(0,0,0,1)'
+    brush.width = width
+    brush.globalCompositeOperation = 'destination-out'
+  } else {
+    brush.color = color
+    brush.width = width
+    brush.globalCompositeOperation = 'source-over'
+  }
   // Configure brush properties based on brush type
   switch (brushType) {
     case 'round':

@@ -90,7 +90,11 @@ function stopPlayback() {
 
 function addFrame() {
   // Insert a new frame after current using store method
-  videoStore.insertFramesAfterCurrent(1)
+  // Add a new frame to the animation
+  videoStore.state.frameCount += 1
+  videoStore.setCurrentFrame(videoStore.state.frameCount - 1)
+  // Optionally, initialize drawing for new frame
+  drawingStore.saveFrameDrawing(videoStore.state.currentFrame, '', '')
 }
 
 onUnmounted(() => {

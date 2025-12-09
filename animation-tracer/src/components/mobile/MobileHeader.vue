@@ -20,6 +20,10 @@
           </div>
           
           <div class="menu-items">
+                        <button class="menu-item" @click="handleImportVideo">
+                          <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><polygon points="10 9 15 12 10 15 10 9"/></svg>
+                          <span>Import Video</span>
+                        </button>
             <button class="menu-item" @click="handleToggleVideo">
               <svg v-if="settingsStore.showMobileVideoOverlay" class="menu-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
               <svg v-else class="menu-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -79,9 +83,11 @@
 import { ref, computed } from 'vue'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { useProjectStore } from '../../stores/projectStore'
+import { useVideoStore } from '../../stores/videoStore'
 
 const settingsStore = useSettingsStore()
 const projectStore = useProjectStore()
+const videoStore = useVideoStore()
 
 const menuOpen = ref(false)
 
@@ -113,27 +119,37 @@ function handleToggleVideo() {
 }
 
 function handleNewProject() {
-  emit('new-project')
+  projectStore.createNewProject()
+  projectStore.toast('New project created')
   closeMenu()
 }
 
 function handleOpenProject() {
   projectStore.loadProject()
+  projectStore.toast('Project loaded')
   closeMenu()
 }
 
 function handleSaveProject() {
   projectStore.saveProject()
+  projectStore.toast('Project saved')
   closeMenu()
 }
 
 function handleExport() {
-  emit('export')
+  projectStore.exportProject()
+  projectStore.toast('Export started')
+  closeMenu()
+}
+
+function handleImportVideo() {
+  videoStore.importVideo()
+  projectStore.toast('Import video dialog opened')
   closeMenu()
 }
 
 function handleQuickExport() {
-  emit('quick-export')
+  projectStore.quickExport()
 }
 
 function handleSwitchToDesktop() {
