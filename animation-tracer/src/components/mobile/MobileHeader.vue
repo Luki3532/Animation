@@ -94,12 +94,6 @@ const menuOpen = ref(false)
 // Canvas background color from store
 const canvasBgColor = computed(() => settingsStore.canvasBackgroundColor)
 
-const emit = defineEmits<{
-  (e: 'export'): void
-  (e: 'quick-export'): void
-  (e: 'new-project'): void
-}>()
-
 function handleBgColorChange(event: Event) {
   const color = (event.target as HTMLInputElement).value
   settingsStore.setCanvasBackgroundColor(color)
@@ -119,7 +113,7 @@ function handleToggleVideo() {
 }
 
 function handleNewProject() {
-  projectStore.createNewProject()
+  projectStore.resetProject()
   projectStore.toast('New project created')
   closeMenu()
 }
@@ -137,19 +131,31 @@ function handleSaveProject() {
 }
 
 function handleExport() {
-  projectStore.exportProject()
-  projectStore.toast('Export started')
+  // Export functionality - on mobile, save project is the main action
+  projectStore.saveProject()
+  projectStore.toast('Project saved')
   closeMenu()
 }
 
 function handleImportVideo() {
-  videoStore.importVideo()
-  projectStore.toast('Import video dialog opened')
+  // Create a file input to trigger video import
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'video/*'
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (file) {
+      videoStore.loadVideo(file)
+      projectStore.toast('Video loaded')
+    }
+  }
+  input.click()
   closeMenu()
 }
 
 function handleQuickExport() {
-  projectStore.quickExport()
+  projectStore.saveProject()
+  projectStore.toast('Project saved')
 }
 
 function handleSwitchToDesktop() {

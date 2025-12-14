@@ -33,8 +33,10 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted } from 'vue'
 import { useVideoStore } from '../../stores/videoStore'
+import { useDrawingStore } from '../../stores/drawingStore'
 
 const videoStore = useVideoStore()
+const drawingStore = useDrawingStore()
 
 const isPlaying = ref(false)
 let playInterval: ReturnType<typeof setInterval> | null = null

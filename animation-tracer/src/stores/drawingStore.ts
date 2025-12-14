@@ -128,6 +128,7 @@ export const useDrawingStore = defineStore('drawing', () => {
     history.value = history.value.slice(0, historyIndex.value + 1)
     history.value.push(state)
     historyIndex.value = history.value.length - 1
+    console.log(`[History] Push: index=${historyIndex.value}, length=${history.value.length}`)
     
     // Limit history size
     if (history.value.length > 50) {
@@ -137,24 +138,31 @@ export const useDrawingStore = defineStore('drawing', () => {
   }
   
   function undo(): string | null {
+    console.log(`[History] Undo called: index=${historyIndex.value}, length=${history.value.length}`)
     if (historyIndex.value > 0) {
       historyIndex.value--
+      console.log(`[History] Undo success: returning state at index=${historyIndex.value}`)
       return history.value[historyIndex.value]
     }
+    console.log(`[History] Undo failed: cannot go below 0`)
     return null
   }
   
   function redo(): string | null {
+    console.log(`[History] Redo called: index=${historyIndex.value}, length=${history.value.length}`)
     if (historyIndex.value < history.value.length - 1) {
       historyIndex.value++
+      console.log(`[History] Redo success: returning state at index=${historyIndex.value}`)
       return history.value[historyIndex.value]
     }
+    console.log(`[History] Redo failed: at end of history`)
     return null
   }
   
   function clearHistory() {
     history.value = []
     historyIndex.value = -1
+    console.log(`[History] Cleared`)
   }
 
   // Shift all frame drawings at or after fromIndex by shiftAmount positions

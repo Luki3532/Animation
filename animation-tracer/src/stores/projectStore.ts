@@ -39,10 +39,49 @@ export const useProjectStore = defineStore('project', () => {
   const autoSaveTimer = ref<number | null>(null)
   const hasFileHandle = ref<boolean>(false)
   
+  // Timer tick for updating "saved X ago" text (increments every 10 seconds)
+  const saveTimerTick = ref<number>(0)
+  let saveTimerInterval: number | null = null
+  
+  // Start the save timer tick (updates the "saved X ago" text)
+  function startSaveTimerTick() {
+    if (saveTimerInterval) return
+    saveTimerInterval = window.setInterval(() => {
+      saveTimerTick.value++
+    }, 10000) // Update every 10 seconds
+  }
+  
+  // Stop the save timer tick
+  function stopSaveTimerTick() {
+    if (saveTimerInterval) {
+      clearInterval(saveTimerInterval)
+      saveTimerInterval = null
+    }
+  }
+  
+  // Start the timer immediately
+  startSaveTimerTick()
+  
   // Video reconnection state
   const needsVideoReconnect = ref<boolean>(false)
   const videoSourceRef = ref<VideoSourceReference | null>(null)
   const showVideoReconnectDialog = ref<boolean>(false)
+  
+  // Video validation state (for reconnect dialog)
+  const pendingVideoFile = ref<File | null>(null)
+  const pendingVideoHandle = ref<unknown | null>(null)
+  const videoValidationResult = ref<VideoValidationResult | null>(null)
+  
+  // Video validation result type
+  interface VideoValidationResult {
+    isExactMatch: boolean
+    differences: Array<{
+      field: string
+      expected: string
+      actual: string
+      severity: 'warning' | 'error'
+    }>
+  }
   
   // Computed
   const hasCheckpoints = computed(() => checkpoints.value.length > 0)
@@ -52,6 +91,10 @@ export const useProjectStore = defineStore('project', () => {
   const supportsAutoSave = computed(() => ProjectService.supportsFileSystemAccess())
   const currentFormat = computed(() => projectFormat.value)
   const autoSaveStatusText = computed(() => {
+    // Include saveTimerTick to force re-evaluation every 10 seconds
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _tick = saveTimerTick.value
+    
     switch (autoSaveStatus.value) {
       case 'saving': return 'Saving...'
       case 'saved': return lastAutoSave.value 
@@ -80,6 +123,70 @@ export const useProjectStore = defineStore('project', () => {
     setTimeout(() => {
       showToast.value = false
     }, duration)
+  }
+  
+  // Validate video file against expected source reference
+  // Returns validation result with differences
+  function validateVideoFile(
+    file: File,
+    fileDuration: number,
+    expected: VideoSourceReference
+  ): VideoValidationResult {
+    const differences: VideoValidationResult['differences'] = []
+    
+    // Check filename
+    if (file.name !== expected.filename) {
+      differences.push({
+        field: 'Filename',
+        expected: expected.filename,
+        actual: file.name,
+        severity: 'warning'
+      })
+    }
+    
+    // Check file size (exact match expected)
+    if (expected.fileSize > 0 && file.size !== expected.fileSize) {
+      const expectedMB = (expected.fileSize / (1024 * 1024)).toFixed(2)
+      const actualMB = (file.size / (1024 * 1024)).toFixed(2)
+      differences.push({
+        field: 'File size',
+        expected: `${expectedMB} MB`,
+        actual: `${actualMB} MB`,
+        severity: 'warning'
+      })
+    }
+    
+    // Check duration (0.5s tolerance)
+    const durationTolerance = 0.5
+    if (expected.duration > 0 && Math.abs(fileDuration - expected.duration) > durationTolerance) {
+      differences.push({
+        field: 'Duration',
+        expected: `${expected.duration.toFixed(2)}s`,
+        actual: `${fileDuration.toFixed(2)}s`,
+        severity: 'error'
+      })
+    }
+    
+    // Check expected frame count if available
+    if (expected.expectedFrameCount && expected.projectFps) {
+      const actualFrameCount = Math.floor(fileDuration * expected.projectFps)
+      const frameDiff = Math.abs(actualFrameCount - expected.expectedFrameCount)
+      const frameDiffPercent = (frameDiff / expected.expectedFrameCount) * 100
+      
+      if (frameDiffPercent > 5) {
+        differences.push({
+          field: 'Frame count',
+          expected: `${expected.expectedFrameCount} frames`,
+          actual: `${actualFrameCount} frames (${frameDiffPercent.toFixed(1)}% different)`,
+          severity: 'error'
+        })
+      }
+    }
+    
+    return {
+      isExactMatch: differences.length === 0,
+      differences
+    }
   }
   
   // Pick save location for new project
@@ -284,20 +391,38 @@ export const useProjectStore = defineStore('project', () => {
     const drawingStore = useDrawingStore()
     const videoStore = useVideoStore()
     
-    // Build video source reference if we have a video loaded
+    // Build video source reference for video-based projects
+    // ALWAYS save video metadata if this is a video project (not empty project)
     let videoSource: VideoSourceReference | undefined
-    if (videoStore.hasVideo && videoStore.state.file) {
-      // Fresh video file available - build from it
-      videoSource = {
-        filename: videoStore.state.file.name,
-        fileSize: videoStore.state.file.size,
-        duration: videoStore.state.duration
-      }
-    } else if (videoStore.hasVideo && videoSourceRef.value) {
-      // Reconnected video or loaded from project - use stored reference
-      videoSource = {
-        ...videoSourceRef.value,
-        duration: videoStore.state.duration || videoSourceRef.value.duration
+    if (!videoStore.state.isEmptyProject) {
+      if (videoStore.hasVideo && videoStore.state.file) {
+        // Fresh video file available - build complete reference
+        videoSource = {
+          filename: videoStore.state.file.name,
+          fileSize: videoStore.state.file.size,
+          duration: videoStore.state.duration,
+          mimeType: videoStore.state.file.type,
+          expectedFrameCount: videoStore.state.frameCount,
+          projectFps: videoStore.state.fps
+        }
+      } else if (videoSourceRef.value) {
+        // Reconnected video or loaded from project - use stored reference with updates
+        videoSource = {
+          ...videoSourceRef.value,
+          duration: videoStore.state.duration || videoSourceRef.value.duration,
+          expectedFrameCount: videoStore.state.frameCount,
+          projectFps: videoStore.state.fps
+        }
+      } else if (videoStore.hasVideo) {
+        // Video loaded but no file/source info - create fallback reference
+        // Ensures video projects always prompt for reconnect
+        videoSource = {
+          filename: 'Unknown video',
+          fileSize: 0,
+          duration: videoStore.state.duration,
+          expectedFrameCount: videoStore.state.frameCount,
+          projectFps: videoStore.state.fps
+        }
       }
     }
     
@@ -346,41 +471,69 @@ export const useProjectStore = defineStore('project', () => {
         videoFile
       )
       
-      // If we have a file handle, save directly to it
-      if (hasFileHandle.value && !saveAs) {
-        const success = await ProjectService.saveToHandle(blob)
-        if (success) {
+      // DIRECT APPROACH: Check ProjectService handle directly, ignore hasFileHandle ref
+      const handle = ProjectService.getFileHandle()
+      
+      if (handle && !saveAs) {
+        // We have a handle - save directly
+        try {
+          const writable = await handle.createWritable()
+          await writable.write(blob)
+          await writable.close()
+          
           isDirty.value = false
           lastAutoSave.value = new Date()
+          autoSaveStatus.value = 'saved'
+          hasFileHandle.value = true
           toast(`Saved`)
           return true
+        } catch (e) {
+          // Handle failed, clear it and fall through to picker
+          console.error('Direct save failed:', e)
+          ProjectService.setFileHandle(null)
+          hasFileHandle.value = false
         }
-        // If save to handle failed, fall through to download
-        hasFileHandle.value = false
       }
       
-      // No file handle or saveAs - prompt for name and download
-      let filename = projectName.value
-      if (saveAs || filename === 'Untitled' || !hasFileHandle.value) {
-        const newName = prompt('Project name:', filename)
-        if (!newName) {
-          isSaving.value = false
-          return false
-        }
-        filename = newName
-        projectName.value = newName
+      // No handle or saveAs - pick new location
+      if (!ProjectService.supportsFileSystemAccess()) {
+        // Fallback download
+        const safeFilename = projectName.value.replace(/[^a-z0-9_\-]/gi, '_')
+        const extension = projectFormat.value === 'fluf' ? '.fluf' : '.lucas'
+        ProjectService.downloadBlob(blob, `${safeFilename}${extension}`)
+        isDirty.value = false
+        toast(`Downloaded: ${safeFilename}${extension}`)
+        return true
       }
       
-      const safeFilename = filename.replace(/[^a-z0-9_\-]/gi, '_')
-      const extension = projectFormat.value === 'fluf' ? '.fluf' : '.lucas'
-      ProjectService.downloadBlob(blob, `${safeFilename}${extension}`)
+      // Pick save location
+      const safeFilename = projectName.value.replace(/[^a-z0-9_\-]/gi, '_')
+      const newHandle = await ProjectService.pickSaveLocation(safeFilename, projectFormat.value)
       
-      projectPath.value = `${safeFilename}${extension}`
+      if (!newHandle) {
+        // User cancelled
+        return false
+      }
+      
+      // Save to new handle
+      const writable = await newHandle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+      
+      // Store handle for future saves
+      ProjectService.setFileHandle(newHandle)
+      hasFileHandle.value = true
+      
+      const chosenName = newHandle.name.replace(/\.(lucas|fluf)$/i, '')
+      projectName.value = chosenName
+      projectPath.value = newHandle.name
       isDirty.value = false
-      
-      toast(`Saved: ${filename}${extension}`)
-      
+      lastAutoSave.value = new Date()
+      autoSaveStatus.value = 'saved'
+      startAutoSaveTimer()
+      toast(`Saved: ${newHandle.name}`)
       return true
+      
     } catch (error) {
       console.error('Failed to save project:', error)
       toast('Failed to save project')
@@ -416,10 +569,13 @@ export const useProjectStore = defineStore('project', () => {
       projectFormat.value = formatType
       
       // Clear and load frames
+      console.log(`[ProjectStore] Loading ${frames.size} frames into drawing store`)
       drawingStore.frameDrawings.clear()
       for (const [index, frame] of frames) {
         drawingStore.frameDrawings.set(index, frame)
+        console.log(`[ProjectStore] Set frame ${index} in store`)
       }
+      console.log(`[ProjectStore] Drawing store now has ${drawingStore.frameDrawings.size} frames`)
       
       // Load drawing settings
       drawingStore.canvasSize = projectData.drawing.canvasSize
@@ -428,13 +584,27 @@ export const useProjectStore = defineStore('project', () => {
       // Handle video loading based on format type
       if (embeddedVideo) {
         // .fluf format - video is embedded, load directly
+        // Set project overrides so FPS/frameCount are preserved after video loads
+        videoStore.setProjectVideoOverrides(projectData.video.fps, projectData.video.frameCount)
         videoStore.loadVideo(embeddedVideo)
         needsVideoReconnect.value = false
         videoSourceRef.value = null
         toast(`Loaded: ${manifest.name} (with video)`)
-      } else if (projectData.video.videoSource && !projectData.video.isEmptyProject) {
-        // .lucas format - try to auto-reconnect video first
-        videoSourceRef.value = projectData.video.videoSource
+      } else if (!projectData.video.isEmptyProject) {
+        // .lucas format - ALWAYS require video reconnection
+        // Store the expected video source reference (may be from saved data or reconstructed)
+        if (projectData.video.videoSource) {
+          videoSourceRef.value = projectData.video.videoSource
+        } else {
+          // Reconstruct reference from project data (older files may not have full reference)
+          videoSourceRef.value = {
+            filename: 'Original video',
+            fileSize: 0,
+            duration: projectData.video.frameCount / projectData.video.fps,
+            expectedFrameCount: projectData.video.frameCount,
+            projectFps: projectData.video.fps
+          }
+        }
         
         // Try to load stored video file handle from IndexedDB
         const storedHandle = await loadVideoFileHandle()
@@ -442,18 +612,44 @@ export const useProjectStore = defineStore('project', () => {
           ProjectService.setVideoFileHandle(storedHandle as any)
         }
         
+        // Set project overrides so FPS/frameCount are preserved when video reconnects
+        videoStore.setProjectVideoOverrides(projectData.video.fps, projectData.video.frameCount)
+        
         // Try auto-reconnect using stored handle
         const autoFile = await ProjectService.tryGetVideoFromHandle()
-        if (autoFile) {
-          // Auto-reconnect succeeded!
-          videoStore.loadVideo(autoFile)
-          needsVideoReconnect.value = false
-          showVideoReconnectDialog.value = false
-          toast(`Loaded: ${manifest.name} (video auto-connected)`)
+        if (autoFile && videoSourceRef.value) {
+          // Check if auto-connected file matches expected (filename + fileSize must match exactly)
+          const isExactMatch = autoFile.name === videoSourceRef.value.filename && 
+            (videoSourceRef.value.fileSize === 0 || autoFile.size === videoSourceRef.value.fileSize)
+          
+          if (isExactMatch) {
+            // Exact match - auto-reconnect silently
+            videoStore.loadVideo(autoFile)
+            needsVideoReconnect.value = false
+            showVideoReconnectDialog.value = false
+            toast(`Loaded: ${manifest.name} (video auto-connected)`)
+          } else {
+            // File doesn't match - show dialog with pre-loaded file for validation
+            pendingVideoFile.value = autoFile
+            pendingVideoHandle.value = storedHandle
+            needsVideoReconnect.value = true
+            showVideoReconnectDialog.value = true
+            
+            // Create empty project with saved dimensions while waiting for user confirmation
+            videoStore.createEmptyProject(
+              projectData.video.width || 512,
+              projectData.video.height || 512,
+              projectData.video.frameCount || 100,
+              projectData.video.fps || 24
+            )
+          }
         } else {
-          // Auto-reconnect failed, show dialog
+          // No auto-reconnect available - show dialog
           needsVideoReconnect.value = true
           showVideoReconnectDialog.value = true
+          pendingVideoFile.value = null
+          pendingVideoHandle.value = null
+          videoValidationResult.value = null
           
           // Create empty project with saved dimensions while waiting for video
           videoStore.createEmptyProject(
@@ -552,23 +748,75 @@ export const useProjectStore = defineStore('project', () => {
     showVideoReconnectDialog.value = false
   }
   
-  // Browse for video to reconnect
+  // Browse for video to reconnect - opens file picker and validates selection
   async function browseForVideo(): Promise<boolean> {
-    const videoStore = useVideoStore()
-    
     // Use File System Access API to get handle for future auto-reconnect
     const result = await ProjectService.openVideoFilePickerWithHandle()
     if (!result) return false
     
     const { file, handle } = result
     
+    // Store pending file for validation dialog
+    pendingVideoFile.value = file
+    pendingVideoHandle.value = handle
+    
+    // Get video duration for validation
+    const duration = await getVideoDuration(file)
+    
+    // Validate against expected source
+    if (videoSourceRef.value) {
+      videoValidationResult.value = validateVideoFile(file, duration, videoSourceRef.value)
+    } else {
+      videoValidationResult.value = { isExactMatch: true, differences: [] }
+    }
+    
+    return true
+  }
+  
+  // Get video duration from file
+  function getVideoDuration(file: File): Promise<number> {
+    return new Promise((resolve) => {
+      const video = document.createElement('video')
+      video.preload = 'metadata'
+      
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(video.src)
+        resolve(video.duration)
+      }
+      
+      video.onerror = () => {
+        URL.revokeObjectURL(video.src)
+        resolve(0)
+      }
+      
+      video.src = URL.createObjectURL(file)
+    })
+  }
+  
+  // Confirm video selection and load it (called from dialog after validation)
+  async function confirmVideoSelection(): Promise<boolean> {
+    const videoStore = useVideoStore()
+    
+    if (!pendingVideoFile.value) return false
+    
+    // If we have saved video settings from the project, apply them as overrides
+    // This ensures FPS and frame count are preserved when reconnecting
+    // Use the saved project FPS and frameCount, not the current state
+    if (videoSourceRef.value && videoSourceRef.value.projectFps && videoSourceRef.value.expectedFrameCount) {
+      videoStore.setProjectVideoOverrides(
+        videoSourceRef.value.projectFps,
+        videoSourceRef.value.expectedFrameCount
+      )
+      console.log(`[ProjectStore] Set video overrides: fps=${videoSourceRef.value.projectFps}, frames=${videoSourceRef.value.expectedFrameCount}`)
+    }
+    
     // Load the video
-    videoStore.loadVideo(file)
+    videoStore.loadVideo(pendingVideoFile.value)
     
     // Save handle to IndexedDB for persistence across browser sessions
-    if (handle) {
-      ProjectService.setVideoFileHandle(handle)
-      await saveVideoFileHandle(handle)
+    if (pendingVideoHandle.value) {
+      ProjectService.setVideoFileHandle(pendingVideoHandle.value as any)
+      await saveVideoFileHandle(pendingVideoHandle.value)
     }
     
     // Clear reconnect state
@@ -577,21 +825,45 @@ export const useProjectStore = defineStore('project', () => {
     
     // Update the video source reference for future saves
     videoSourceRef.value = {
-      filename: file.name,
-      fileSize: file.size,
+      filename: pendingVideoFile.value.name,
+      fileSize: pendingVideoFile.value.size,
       duration: 0, // Will be updated when video loads
-      mimeType: file.type
+      mimeType: pendingVideoFile.value.type,
+      expectedFrameCount: videoStore.state.frameCount,
+      projectFps: videoStore.state.fps
     }
     
+    // Clear pending state
+    pendingVideoFile.value = null
+    pendingVideoHandle.value = null
+    videoValidationResult.value = null
+    
     markDirty()
-    toast(`Video reconnected: ${file.name}`)
+    toast(`Video connected: ${videoSourceRef.value.filename}`)
     
     return true
   }
   
-  // Dismiss video reconnect dialog (user chooses to work without video)
+  // Dismiss video reconnect dialog - NOT allowed for video projects (skip disabled)
   function dismissVideoReconnect() {
+    // For video projects, user MUST provide a video - no skip allowed
+    // This function now only clears the validation state if user wants to pick a different file
+    pendingVideoFile.value = null
+    pendingVideoHandle.value = null
+    videoValidationResult.value = null
+  }
+  
+  // View drawings without video overlay (for corrupt/lost video files)
+  function viewDrawingsWithoutVideo() {
+    // Close dialog and let user view drawings on the empty canvas
+    // The empty project was already created with saved dimensions in loadProject
     showVideoReconnectDialog.value = false
+    needsVideoReconnect.value = false
+    pendingVideoFile.value = null
+    pendingVideoHandle.value = null
+    videoValidationResult.value = null
+    
+    toast('Viewing drawings without video overlay')
   }
   
   // Set project format
@@ -633,6 +905,10 @@ export const useProjectStore = defineStore('project', () => {
     videoSourceRef,
     showVideoReconnectDialog,
     
+    // Video validation state
+    pendingVideoFile,
+    videoValidationResult,
+    
     // Computed
     hasCheckpoints,
     checkpointCount,
@@ -656,7 +932,9 @@ export const useProjectStore = defineStore('project', () => {
     toggleCheckpointPanel,
     toast,
     browseForVideo,
+    confirmVideoSelection,
     dismissVideoReconnect,
+    viewDrawingsWithoutVideo,
     setFormat,
     
     // Auto-save actions

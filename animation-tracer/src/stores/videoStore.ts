@@ -35,6 +35,11 @@ export const useVideoStore = defineStore('video', () => {
   const lastVideoPath = ref<string>('')
   const savedCurrentFrame = ref<number>(0)
   
+  // Project settings to preserve when reconnecting video
+  // When a project is loaded, these settings should override auto-detected video settings
+  const projectFpsOverride = ref<number | null>(null)
+  const projectFrameCountOverride = ref<number | null>(null)
+  
   // Persistence state
   const isLoaded = ref(false)
   
@@ -140,13 +145,37 @@ export const useVideoStore = defineStore('video', () => {
     state.value.duration = duration
     state.value.width = width
     state.value.height = height
-    state.value.fps = fps
-    state.value.frameCount = Math.floor(duration * fps)
+    
+    // If we have project overrides (from loading a .lucas file), use those instead
+    if (projectFpsOverride.value !== null) {
+      state.value.fps = projectFpsOverride.value
+      state.value.frameCount = projectFrameCountOverride.value ?? Math.floor(duration * projectFpsOverride.value)
+      // Clear the overrides after applying
+      projectFpsOverride.value = null
+      projectFrameCountOverride.value = null
+    } else {
+      state.value.fps = fps
+      state.value.frameCount = Math.floor(duration * fps)
+    }
+    
     state.value.isLoaded = true
     // The video will seek to the first frame after metadata loads,
     // so mark as seeking to ensure proper synchronization
     isSeekingVideo.value = true
     frameChangeVersion.value++
+  }
+  
+  // Set project settings to override auto-detected video settings
+  // Call this before loading a video when restoring from a project file
+  function setProjectVideoOverrides(fps: number, frameCount: number) {
+    projectFpsOverride.value = fps
+    projectFrameCountOverride.value = frameCount
+  }
+  
+  // Clear project overrides (call when starting a fresh project)
+  function clearProjectVideoOverrides() {
+    projectFpsOverride.value = null
+    projectFrameCountOverride.value = null
   }
   
   function setCurrentFrame(frame: number) {
@@ -284,6 +313,25 @@ export const useVideoStore = defineStore('video', () => {
     return insertAfterIndex + 1 // Return where frames were inserted
   }
 
+  // Remove frames starting from a specific index (empty projects only)
+  function removeFrames(startIndex: number, count: number): boolean {
+    if (!state.value.isEmptyProject || count <= 0) return false
+    // Ensure we leave at least 1 frame
+    const maxRemovable = state.value.frameCount - 1
+    const actualCount = Math.min(count, maxRemovable)
+    if (actualCount <= 0) return false
+    
+    state.value.frameCount -= actualCount
+    state.value.duration = state.value.frameCount / state.value.fps
+    
+    // Adjust current frame if it's now out of bounds
+    if (state.value.currentFrame >= state.value.frameCount) {
+      state.value.currentFrame = Math.max(0, state.value.frameCount - 1)
+    }
+    
+    return true
+  }
+
   // Set frame count directly (empty projects only)
   function setFrameCount(count: number) {
     if (!state.value.isEmptyProject) return
@@ -328,10 +376,13 @@ export const useVideoStore = defineStore('video', () => {
     createEmptyProject,
     addFrames,
     insertFramesAfterCurrent,
+    removeFrames,
     setFrameCount,
     setProjectDimensions,
     notifyVideoSeeked,
     waitForVideoSeek,
-    getFrameChangeVersion
+    getFrameChangeVersion,
+    setProjectVideoOverrides,
+    clearProjectVideoOverrides
   }
 })

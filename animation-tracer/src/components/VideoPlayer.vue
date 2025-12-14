@@ -255,7 +255,7 @@ function renderCurrentFrame() {
   const canvas = frameCanvas.value
   if (!video || !canvas) return
 
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return
 
   // Set canvas size to match video
@@ -265,7 +265,7 @@ function renderCurrentFrame() {
   // Draw video frame
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-  // Emit frame data for drawing overlay
+  // Emit frame data for drawing overlay (use willReadFrequently for performance)
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   emit('frameReady', imageData)
 }

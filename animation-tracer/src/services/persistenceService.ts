@@ -46,11 +46,40 @@ export interface SavedDrawingData {
 }
 
 export async function saveDrawingData(data: SavedDrawingData): Promise<void> {
-  await Promise.all([
-    set(KEYS.FRAME_DRAWINGS, data.frameDrawings),
-    set(KEYS.TOOL_SETTINGS, data.toolSettings),
-    set(KEYS.CANVAS_SIZE, data.canvasSize)
-  ])
+  try {
+    // Deep clone all data to remove Vue reactive proxies before saving to IndexedDB
+    // IndexedDB can't clone proxy objects, so we need plain JavaScript objects
+    const plainFrameDrawings = data.frameDrawings.map(([index, frame]) => [
+      index,
+      {
+        frameIndex: frame.frameIndex,
+        fabricJSON: frame.fabricJSON,
+        thumbnail: frame.thumbnail
+      }
+    ] as [number, FrameDrawing])
+    
+    const plainToolSettings = {
+      tool: data.toolSettings.tool,
+      color: data.toolSettings.color,
+      brushSize: data.toolSettings.brushSize,
+      opacity: data.toolSettings.opacity,
+      brushType: data.toolSettings.brushType
+    }
+    
+    const plainCanvasSize = {
+      width: data.canvasSize.width,
+      height: data.canvasSize.height,
+      label: data.canvasSize.label
+    }
+    
+    await Promise.all([
+      set(KEYS.FRAME_DRAWINGS, plainFrameDrawings),
+      set(KEYS.TOOL_SETTINGS, plainToolSettings),
+      set(KEYS.CANVAS_SIZE, plainCanvasSize)
+    ])
+  } catch (error) {
+    console.error('Failed to save drawing data:', error)
+  }
 }
 
 export async function loadDrawingData(): Promise<SavedDrawingData | null> {

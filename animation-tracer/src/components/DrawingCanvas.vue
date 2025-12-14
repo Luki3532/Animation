@@ -37,15 +37,13 @@ const settingsStore = useSettingsStore()
 // Helper function to create and configure a brush based on brush type
 function createBrush(canvas: Canvas, color: string, width: number, brushType: BrushType): PencilBrush {
   const brush = new PencilBrush(canvas)
-  // Eraser tool: use destination-out for true erasing
+  // Eraser tool: use white color (we'll apply globalCompositeOperation on path:created)
   if (drawingStore.toolSettings.tool === 'eraser') {
     brush.color = 'rgba(0,0,0,1)'
     brush.width = width
-    brush.globalCompositeOperation = 'destination-out'
   } else {
     brush.color = color
     brush.width = width
-    brush.globalCompositeOperation = 'source-over'
   }
   // Configure brush properties based on brush type
   switch (brushType) {
@@ -131,6 +129,9 @@ let lassoPoints: { x: number; y: number }[] = []
 let isDrawingLasso = false
 let resizeObserver: ResizeObserver | null = null
 
+// Track last loaded frame to prevent redundant history clears
+let lastLoadedFrame: number = -1
+
 // Pan state (middle mouse or pan tool)
 const isPanningRef = ref(false)
 let isPanning = false
@@ -179,6 +180,9 @@ onUnmounted(() => {
 
 function initCanvas() {
   if (!canvasRef.value || !containerRef.value) return
+
+  // Reset frame tracking to allow fresh load
+  lastLoadedFrame = -1
 
   // Use video dimensions if available, otherwise use drawing canvas size
   const width = videoStore.state.width || drawingStore.canvasSize.width
@@ -241,6 +245,13 @@ function initCanvas() {
         hasControls: false,
         hasBorders: false,
       })
+      
+      // Apply eraser mode - use globalCompositeOperation for true erasing
+      if (drawingStore.toolSettings.tool === 'eraser') {
+        e.path.set({
+          globalCompositeOperation: 'destination-out'
+        })
+      }
       
       // Apply smoothing AFTER path is created (if enabled)
       if (settingsStore.smoothLineMode && settingsStore.smoothLineStrength > 0) {
@@ -1038,6 +1049,11 @@ async function loadFrameDrawing() {
   const capturedVersion = videoStore.getFrameChangeVersion()
   const capturedFrame = videoStore.state.currentFrame
 
+  // Skip if we already loaded this frame (prevents redundant history clears)
+  if (lastLoadedFrame === capturedFrame) {
+    return
+  }
+
   // Wait for video seek to complete before loading the drawing
   await videoStore.waitForVideoSeek()
 
@@ -1057,6 +1073,14 @@ async function loadFrameDrawing() {
     if (videoStore.getFrameChangeVersion() === capturedVersion) {
       fabricCanvas?.renderAll()
     }
+  }
+  
+  // Clear history for new frame and push initial state for proper undo/redo
+  if (videoStore.getFrameChangeVersion() === capturedVersion) {
+    lastLoadedFrame = capturedFrame
+    drawingStore.clearHistory()
+    const json = JSON.stringify(fabricCanvas.toJSON())
+    drawingStore.pushHistory(json)
   }
   
   // Only render onion skins if we're still on the same frame
@@ -1113,17 +1137,25 @@ function renderOnionSkins() {
       framesToRender.push({ index: f, isBefore: false, distance: i + 1 })
     })
   } else {
-    // Sequential frames
-    for (let i = framesBefore; i >= 1; i--) {
-      const frameIndex = currentFrame - i
-      if (frameIndex >= 0 && drawingStore.getFrameDrawing(frameIndex)) {
-        framesToRender.push({ index: frameIndex, isBefore: true, distance: i })
+    // Sequential frames - find frames WITH drawings, not just adjacent frames
+    // Look backwards for frames with drawings
+    let foundBefore = 0
+    let distanceBefore = 1
+    for (let i = currentFrame - 1; i >= 0 && foundBefore < framesBefore; i--) {
+      if (drawingStore.getFrameDrawing(i)) {
+        foundBefore++
+        framesToRender.push({ index: i, isBefore: true, distance: distanceBefore })
+        distanceBefore++
       }
     }
-    for (let i = 1; i <= framesAfter; i++) {
-      const frameIndex = currentFrame + i
-      if (frameIndex < videoStore.state.frameCount && drawingStore.getFrameDrawing(frameIndex)) {
-        framesToRender.push({ index: frameIndex, isBefore: false, distance: i })
+    // Look forwards for frames with drawings
+    let foundAfter = 0
+    let distanceAfter = 1
+    for (let i = currentFrame + 1; i < videoStore.state.frameCount && foundAfter < framesAfter; i++) {
+      if (drawingStore.getFrameDrawing(i)) {
+        foundAfter++
+        framesToRender.push({ index: i, isBefore: false, distance: distanceAfter })
+        distanceAfter++
       }
     }
   }
@@ -1324,6 +1356,8 @@ watch(
   () => [videoStore.state.width, videoStore.state.height],
   async ([newWidth, newHeight]) => {
     if (newWidth && newHeight && fabricCanvas) {
+      // Reset frame tracking to force reload with new dimensions
+      lastLoadedFrame = -1
       await nextTick()
       fabricCanvas.setDimensions({
         width: newWidth,
@@ -1424,21 +1458,27 @@ function handleKeydown(e: KeyboardEvent) {
 
 // Public methods
 function undo() {
+  console.log('[DrawingCanvas] Undo called')
   const state = drawingStore.undo()
+  console.log('[DrawingCanvas] Got state:', state ? 'yes' : 'null', 'fabricCanvas:', fabricCanvas ? 'yes' : 'null')
   if (state && fabricCanvas) {
     fabricCanvas.loadFromJSON(JSON.parse(state)).then(() => {
       fabricCanvas?.renderAll()
       saveWithoutHistory()
+      console.log('[DrawingCanvas] Undo applied')
     })
   }
 }
 
 function redo() {
+  console.log('[DrawingCanvas] Redo called')
   const state = drawingStore.redo()
+  console.log('[DrawingCanvas] Got state:', state ? 'yes' : 'null', 'fabricCanvas:', fabricCanvas ? 'yes' : 'null')
   if (state && fabricCanvas) {
     fabricCanvas.loadFromJSON(JSON.parse(state)).then(() => {
       fabricCanvas?.renderAll()
       saveWithoutHistory()
+      console.log('[DrawingCanvas] Redo applied')
     })
   }
 }

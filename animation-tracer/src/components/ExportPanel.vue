@@ -293,6 +293,15 @@
       @close="isCustomExportOpen = false"
       @export="handleCustomExport"
     />
+
+    <!-- Sprite Sheet Info Dialog -->
+    <SpriteSheetInfoDialog
+      :is-open="showSpriteSheetInfo"
+      :metadata="spriteSheetMetadata"
+      :padding="padding"
+      :suggested-fps="previewFps"
+      @close="showSpriteSheetInfo = false"
+    />
   </div>
 </template>
 
@@ -324,7 +333,9 @@ import {
   RotateCcw
 } from 'lucide-vue-next'
 import CustomExportDialog from './CustomExportDialog.vue'
+import SpriteSheetInfoDialog from './SpriteSheetInfoDialog.vue'
 import { saveExportPrefs, loadExportPrefs } from '../services/persistenceService'
+import type { SpriteSheetMetadata } from '../types/export'
 
 const drawingStore = useDrawingStore()
 const videoStore = useVideoStore()
@@ -334,6 +345,14 @@ const customHeight = ref(128)
 const padding = ref(1)
 const previewUrl = ref('')
 const isCustomExportOpen = ref(false)
+const showSpriteSheetInfo = ref(false)
+const spriteSheetMetadata = ref<SpriteSheetMetadata>({
+  frames: [],
+  sheetWidth: 0,
+  sheetHeight: 0,
+  frameWidth: 0,
+  frameHeight: 0
+})
 
 // Canvas resize state
 const resizeWidth = ref(drawingStore.canvasSize.width)
@@ -689,6 +708,10 @@ async function exportSpriteSheet() {
 
     // Show preview
     previewUrl.value = URL.createObjectURL(imageBlob)
+
+    // Store metadata and show info dialog
+    spriteSheetMetadata.value = metadata
+    showSpriteSheetInfo.value = true
 
     // Download files
     const filename = videoStore.state.file?.name.replace(/\.[^/.]+$/, '') || 'animation'

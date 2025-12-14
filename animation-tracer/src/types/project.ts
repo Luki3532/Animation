@@ -50,6 +50,10 @@ export interface VideoSourceReference {
   duration: number
   /** MIME type of the video */
   mimeType?: string
+  /** Expected frame count at project FPS (for validation) */
+  expectedFrameCount?: number
+  /** Project FPS setting when saved (locked after project creation) */
+  projectFps?: number
 }
 
 /**

@@ -415,10 +415,14 @@ function handleGlobalKeydown(e: KeyboardEvent) {
     return
   }
   
-  // Handle Ctrl+Z and Ctrl+Y directly for undo/redo
+  // Handle Ctrl+Z for undo, Ctrl+Shift+Z and Ctrl+Y for redo
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault()
-    drawingCanvas.value?.undo()
+    if (e.shiftKey) {
+      drawingCanvas.value?.redo()
+    } else {
+      drawingCanvas.value?.undo()
+    }
     return
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {

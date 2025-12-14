@@ -93,6 +93,28 @@
       </label>
     </div>
 
+    <!-- Drawing Management (All Projects) -->
+    <div class="drawing-management">
+      <button 
+        class="frame-btn copy-btn" 
+        @click="copyCurrentDrawing" 
+        :disabled="!currentFrameHasDrawing" 
+        title="Copy current frame's drawing"
+      >
+        <Copy :size="14" />
+        <span>Copy</span>
+      </button>
+      <button 
+        class="frame-btn paste-btn" 
+        @click="pasteDrawing" 
+        :disabled="!hasClipboardDrawing" 
+        title="Paste drawing to current frame"
+      >
+        <ClipboardPaste :size="14" />
+        <span>Paste</span>
+      </button>
+    </div>
+
     <!-- Frame Management Controls (Empty Projects Only) -->
     <div class="frame-management" v-if="videoStore.state.isEmptyProject">
       <button class="frame-btn add-btn" @click="showAddFramesDialog = true" title="Add frames at end">
@@ -102,6 +124,10 @@
       <button class="frame-btn insert-btn" @click="showInsertFramesDialog = true" title="Insert frames after current">
         <ArrowRightCircle :size="14" />
         <span>Insert Here</span>
+      </button>
+      <button class="frame-btn remove-btn" @click="showRemoveFramesDialog = true" title="Remove frames starting at current" :disabled="videoStore.state.frameCount <= 1">
+        <MinusCircle :size="14" />
+        <span>Remove</span>
       </button>
     </div>
 
@@ -137,12 +163,29 @@
         </div>
       </div>
     </div>
+
+    <!-- Remove Frames Dialog -->
+    <div class="mini-dialog" v-if="showRemoveFramesDialog">
+      <div class="mini-dialog-backdrop" @click="showRemoveFramesDialog = false"></div>
+      <div class="mini-dialog-content">
+        <h4>Remove Frames Starting at Frame {{ videoStore.state.currentFrame + 1 }}</h4>
+        <div class="dialog-row">
+          <label>Number of frames:</label>
+          <input type="number" v-model.number="removeFrameCount" min="1" :max="maxRemovableFrames" />
+        </div>
+        <p class="dialog-hint warning">Drawings on removed frames will be deleted. Remaining drawings will shift backward.</p>
+        <div class="dialog-buttons">
+          <button class="cancel-btn" @click="showRemoveFramesDialog = false">Cancel</button>
+          <button class="confirm-btn danger" @click="confirmRemoveFrames">Remove</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Plus, Minus, PlusCircle, ArrowRightCircle } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Plus, Minus, PlusCircle, ArrowRightCircle, Trash2, MinusCircle, Copy, ClipboardPaste } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -154,8 +197,15 @@ const settingsStore = useSettingsStore()
 // Frame management dialogs state
 const showAddFramesDialog = ref(false)
 const showInsertFramesDialog = ref(false)
+const showRemoveFramesDialog = ref(false)
+const showCopyDrawingDialog = ref(false)
 const addFrameCount = ref(12)
 const insertFrameCount = ref(1)
+const removeFrameCount = ref(1)
+const copyToFrameNumber = ref(1)
+
+// Clipboard for copying drawings between frames
+const clipboardDrawing = ref<{ fabricJSON: string; thumbnail: string } | null>(null)
 
 // Keyframe navigation
 const hasPrevKeyframe = computed(() => {
@@ -215,6 +265,74 @@ function confirmInsertFrames() {
   }
   showInsertFramesDialog.value = false
 }
+
+// Maximum frames that can be removed (leave at least 1 frame)
+const maxRemovableFrames = computed(() => {
+  return Math.max(0, videoStore.state.frameCount - 1)
+})
+
+function confirmRemoveFrames() {
+  const count = Math.min(removeFrameCount.value, maxRemovableFrames.value)
+  if (count > 0) {
+    const removeStartIndex = videoStore.state.currentFrame
+    const removeEndIndex = Math.min(removeStartIndex + count - 1, videoStore.state.frameCount - 1)
+    const actualRemoveCount = removeEndIndex - removeStartIndex + 1
+    
+    // Delete drawings in the range being removed
+    for (let i = removeStartIndex; i <= removeEndIndex; i++) {
+      drawingStore.deleteFrameDrawing(i)
+    }
+    
+    // Shift remaining drawings backwards
+    drawingStore.shiftFrameDrawings(removeEndIndex + 1, -actualRemoveCount)
+    
+    // Remove the frames from video store
+    videoStore.removeFrames(removeStartIndex, actualRemoveCount)
+  }
+  showRemoveFramesDialog.value = false
+}
+
+// Copy current frame's drawing to clipboard
+function copyCurrentDrawing() {
+  const currentDrawing = drawingStore.getFrameDrawing(videoStore.state.currentFrame)
+  if (currentDrawing) {
+    clipboardDrawing.value = {
+      fabricJSON: currentDrawing.fabricJSON,
+      thumbnail: currentDrawing.thumbnail
+    }
+  }
+}
+
+// Paste drawing from clipboard to current frame
+function pasteDrawing() {
+  if (clipboardDrawing.value) {
+    drawingStore.saveFrameDrawing(
+      videoStore.state.currentFrame,
+      clipboardDrawing.value.fabricJSON,
+      clipboardDrawing.value.thumbnail
+    )
+    // Force reload the drawing on canvas by triggering a frame change watcher
+    // This is a bit of a workaround - we temporarily go to another frame and back
+    const currentFrame = videoStore.state.currentFrame
+    if (currentFrame > 0) {
+      videoStore.setCurrentFrame(currentFrame - 1)
+      videoStore.setCurrentFrame(currentFrame)
+    } else if (videoStore.state.frameCount > 1) {
+      videoStore.setCurrentFrame(1)
+      videoStore.setCurrentFrame(0)
+    }
+  }
+}
+
+// Check if current frame has a drawing
+const currentFrameHasDrawing = computed(() => {
+  return drawingStore.getFrameDrawing(videoStore.state.currentFrame) !== undefined
+})
+
+// Check if clipboard has a drawing
+const hasClipboardDrawing = computed(() => {
+  return clipboardDrawing.value !== null
+})
 </script>
 
 <style scoped>
@@ -493,6 +611,63 @@ function confirmInsertFrames() {
   border-color: #4a6a8a;
 }
 
+.remove-btn {
+  background: #3a1a1a;
+  color: #c77;
+  border: 1px solid #5a2a2a;
+}
+
+.remove-btn:hover:not(:disabled) {
+  background: #4a2a2a;
+  border-color: #8a4a4a;
+}
+
+.remove-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Drawing Management Controls */
+.drawing-management {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 1px solid #333;
+}
+
+.copy-btn {
+  background: #2a2a3a;
+  color: #99a;
+  border: 1px solid #3a3a5a;
+}
+
+.copy-btn:hover:not(:disabled) {
+  background: #3a3a4a;
+  border-color: #5a5a7a;
+}
+
+.copy-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.paste-btn {
+  background: #2a3a2a;
+  color: #9a9;
+  border: 1px solid #3a5a3a;
+}
+
+.paste-btn:hover:not(:disabled) {
+  background: #3a4a3a;
+  border-color: #5a7a5a;
+}
+
+.paste-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Mini Dialog */
 .mini-dialog {
   position: fixed;
@@ -553,6 +728,10 @@ function confirmInsertFrames() {
   margin: 0 0 12px 0;
 }
 
+.dialog-hint.warning {
+  color: #c77;
+}
+
 .dialog-buttons {
   display: flex;
   justify-content: flex-end;
@@ -586,5 +765,13 @@ function confirmInsertFrames() {
 
 .confirm-btn:hover {
   background: var(--vscode-button-hoverBackground, #f06b1a);
+}
+
+.confirm-btn.danger {
+  background: #8a2a2a;
+}
+
+.confirm-btn.danger:hover {
+  background: #a03030;
 }
 </style>

@@ -51,6 +51,9 @@ export class ProjectService {
   /** Stored video file handle for auto-reconnect */
   private static videoFileHandle: FileSystemFileHandle | null = null
 
+  /** Flag to only show File System API warning once */
+  private static hasWarnedAboutFileSystemApi: boolean = false
+
   /**
    * Check if File System Access API is supported
    */
@@ -77,7 +80,11 @@ export class ProjectService {
    */
   static async pickSaveLocation(suggestedName: string, format: ProjectFormatType = 'lucas'): Promise<FileSystemFileHandle | null> {
     if (!this.supportsFileSystemAccess()) {
-      console.warn('File System Access API not supported')
+      // Only warn once to avoid console spam
+      if (!this.hasWarnedAboutFileSystemApi) {
+        this.hasWarnedAboutFileSystemApi = true
+        console.info('File System Access API not supported - using fallback download method')
+      }
       return null
     }
 
@@ -216,13 +223,18 @@ export class ProjectService {
     const folder = zip.folder(folderPath)
     if (!folder) return
 
-    for (const [index, frame] of frames) {
+    // Convert to plain array to ensure reactive proxy doesn't interfere
+    const frameEntries = Array.from(frames.entries())
+    console.log(`[ProjectService] Saving ${frameEntries.length} frames to ${folderPath}`)
+
+    for (const [index, frame] of frameEntries) {
       // Save fabricJSON as JSON file
       const frameData: SerializedFrame = {
         frameIndex: frame.frameIndex,
         fabricJSON: frame.fabricJSON
       }
       folder.file(`${index}.json`, JSON.stringify(frameData, null, 2))
+      console.log(`[ProjectService] Saved frame ${index} JSON (${frame.fabricJSON?.length || 0} chars)`)
 
       // Save thumbnail as PNG
       if (frame.thumbnail) {
@@ -241,15 +253,21 @@ export class ProjectService {
   ): Promise<Map<number, FrameDrawing>> {
     const frames = new Map<number, FrameDrawing>()
     const folder = zip.folder(folderPath)
-    if (!folder) return frames
+    if (!folder) {
+      console.warn(`[ProjectService] Folder not found: ${folderPath}`)
+      return frames
+    }
 
     // Find all JSON files in the folder
     const jsonFiles: string[] = []
     folder.forEach((relativePath, _file) => {
+      console.log(`[ProjectService] Found in ${folderPath}: ${relativePath}`)
       if (relativePath.endsWith('.json') && !relativePath.includes('/')) {
         jsonFiles.push(relativePath)
       }
     })
+    
+    console.log(`[ProjectService] Loading ${jsonFiles.length} frames from ${folderPath}`)
 
     for (const jsonFile of jsonFiles) {
       const frameIndex = parseInt(jsonFile.replace('.json', ''), 10)
@@ -258,9 +276,13 @@ export class ProjectService {
       try {
         // Load JSON data
         const jsonContent = await folder.file(jsonFile)?.async('string')
-        if (!jsonContent) continue
+        if (!jsonContent) {
+          console.warn(`[ProjectService] No content for ${jsonFile}`)
+          continue
+        }
         
         const frameData: SerializedFrame = JSON.parse(jsonContent)
+        console.log(`[ProjectService] Loaded frame ${frameIndex} (${frameData.fabricJSON?.length || 0} chars)`)
 
         // Load thumbnail PNG
         let thumbnail = ''
@@ -279,6 +301,8 @@ export class ProjectService {
         console.error(`Failed to load frame ${frameIndex}:`, error)
       }
     }
+    
+    console.log(`[ProjectService] Total frames loaded: ${frames.size}`)
 
     return frames
   }
