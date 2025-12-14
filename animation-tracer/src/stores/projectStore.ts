@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { FrameDrawing } from '../types/drawing'
 import type { 
   ProjectCheckpoint, 
@@ -10,11 +10,18 @@ import type {
   DrawingSettings,
   ProjectFormatType
 } from '../types/project'
-import { AUTO_SAVE_INTERVAL } from '../types/project'
 import { ProjectService } from '../services/projectService'
-import { saveVideoFileHandle, loadVideoFileHandle, clearVideoFileHandle } from '../services/persistenceService'
+import { 
+  saveVideoFileHandle, 
+  loadVideoFileHandle, 
+  clearVideoFileHandle,
+  saveUnsavedSession,
+  loadUnsavedSession,
+  clearUnsavedSession
+} from '../services/persistenceService'
 import { useDrawingStore } from './drawingStore'
 import { useVideoStore } from './videoStore'
+import { useSettingsStore } from './settingsStore'
 
 export const useProjectStore = defineStore('project', () => {
   // Current project state
@@ -83,6 +90,9 @@ export const useProjectStore = defineStore('project', () => {
     }>
   }
   
+  // Get settings store for autosave settings (needed for computed properties)
+  const settingsStore = useSettingsStore()
+  
   // Computed
   const hasCheckpoints = computed(() => checkpoints.value.length > 0)
   const checkpointCount = computed(() => checkpoints.value.length)
@@ -101,8 +111,17 @@ export const useProjectStore = defineStore('project', () => {
         ? `Saved ${formatTimeAgo(lastAutoSave.value)}` 
         : 'Saved'
       case 'error': return 'Save failed'
-      case 'idle': return 'Auto-save on'
-      case 'no-handle': return hasFileHandle.value ? '' : 'Not saved'
+      case 'idle': 
+        // Show appropriate status based on autosave settings
+        if (settingsStore.autosaveEnabled) {
+          return hasFileHandle.value ? 'Auto-save on' : 'Auto-save ready'
+        }
+        return 'Auto-save off'
+      case 'no-handle': 
+        if (settingsStore.autosaveEnabled) {
+          return 'Save to enable'
+        }
+        return 'Not saved'
     }
   })
   
@@ -212,14 +231,22 @@ export const useProjectStore = defineStore('project', () => {
     return false
   }
   
-  // Start auto-save timer
+  // Start auto-save timer based on settings
   function startAutoSaveTimer() {
+    const settingsStore = useSettingsStore()
     stopAutoSaveTimer()
+    
+    // Don't start if autosave is disabled
+    if (!settingsStore.autosaveEnabled) return
+    
+    // Instant autosave (interval = 0) uses 1 second debounce
+    const interval = settingsStore.autosaveInterval === 0 ? 1000 : settingsStore.autosaveInterval * 1000
+    
     autoSaveTimer.value = window.setInterval(() => {
-      if (isDirty.value && hasFileHandle.value) {
+      if (isDirty.value && hasFileHandle.value && settingsStore.autosaveEnabled) {
         performAutoSave()
       }
-    }, AUTO_SAVE_INTERVAL)
+    }, interval)
   }
   
   // Stop auto-save timer
@@ -236,6 +263,7 @@ export const useProjectStore = defineStore('project', () => {
     
     const drawingStore = useDrawingStore()
     const videoStore = useVideoStore()
+    const settingsStore = useSettingsStore()
     
     autoSaveStatus.value = 'saving'
     
@@ -261,7 +289,10 @@ export const useProjectStore = defineStore('project', () => {
       if (success) {
         isDirty.value = false
         lastAutoSave.value = new Date()
+        settingsStore.updateLastAutosaveTime()
         autoSaveStatus.value = 'saved'
+        // Clear unsaved session flag since we just saved
+        clearUnsavedSession()
         return true
       } else {
         autoSaveStatus.value = 'error'
@@ -283,6 +314,12 @@ export const useProjectStore = defineStore('project', () => {
     if (autoSaveStatus.value === 'saved') {
       autoSaveStatus.value = 'idle'
     }
+    // Mark session as having unsaved work for recovery
+    saveUnsavedSession({
+      hasUnsavedWork: true,
+      timestamp: Date.now(),
+      projectName: projectName.value
+    })
   }
   
   // Create a new checkpoint
@@ -885,6 +922,40 @@ export const useProjectStore = defineStore('project', () => {
     showCheckpointPanel.value = !showCheckpointPanel.value
   }
   
+  // Session recovery functions
+  async function checkForUnsavedSession(): Promise<{ hasSession: boolean; timestamp?: number; projectName?: string }> {
+    const session = await loadUnsavedSession()
+    if (session && session.hasUnsavedWork) {
+      return {
+        hasSession: true,
+        timestamp: session.timestamp,
+        projectName: session.projectName
+      }
+    }
+    return { hasSession: false }
+  }
+  
+  async function clearUnsavedSessionFlag() {
+    await clearUnsavedSession()
+  }
+  
+  // Watch for autosave setting changes and restart timer
+  // Note: This will be called after settingsStore is initialized
+  function setupAutosaveWatcher() {
+    const settingsStore = useSettingsStore()
+    watch(
+      () => [settingsStore.autosaveEnabled, settingsStore.autosaveInterval],
+      () => {
+        if (hasFileHandle.value) {
+          startAutoSaveTimer()
+        }
+      }
+    )
+  }
+  
+  // Call setup after store is created
+  setupAutosaveWatcher()
+  
   return {
     // State
     projectName,
@@ -941,6 +1012,10 @@ export const useProjectStore = defineStore('project', () => {
     pickSaveLocation,
     performAutoSave,
     startAutoSaveTimer,
-    stopAutoSaveTimer
+    stopAutoSaveTimer,
+    
+    // Session recovery
+    checkForUnsavedSession,
+    clearUnsavedSessionFlag
   }
 })

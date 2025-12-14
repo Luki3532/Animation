@@ -12,6 +12,10 @@ const KEYS = {
   SETTINGS: 'frameforge_settings',
   KEY_MAPPINGS: 'frameforge_keyMappings',
   ONION_SKIN: 'frameforge_onionSkin',
+  AUTOSAVE_SETTINGS: 'frameforge_autosaveSettings',
+  
+  // Session recovery
+  UNSAVED_SESSION: 'frameforge_unsavedSession',
   
   // Video store
   VIDEO_METADATA: 'frameforge_videoMetadata',
@@ -300,4 +304,52 @@ export async function loadMobilePromptDismissed(): Promise<boolean> {
     console.error('Failed to load mobile prompt dismissed:', error)
     return false
   }
+}
+
+// ============ Autosave Settings Persistence ============
+
+export interface AutosaveSettings {
+  enabled: boolean
+  interval: number // seconds
+  onboardingDismissed?: boolean
+}
+
+export async function saveAutosaveSettings(settings: AutosaveSettings): Promise<void> {
+  await set(KEYS.AUTOSAVE_SETTINGS, settings)
+}
+
+export async function loadAutosaveSettings(): Promise<AutosaveSettings | null> {
+  try {
+    const value = await get<AutosaveSettings>(KEYS.AUTOSAVE_SETTINGS)
+    return value ?? null
+  } catch (error) {
+    console.error('Failed to load autosave settings:', error)
+    return null
+  }
+}
+
+// ============ Session Recovery Persistence ============
+
+export interface UnsavedSession {
+  hasUnsavedWork: boolean
+  timestamp: number
+  projectName?: string
+}
+
+export async function saveUnsavedSession(session: UnsavedSession): Promise<void> {
+  await set(KEYS.UNSAVED_SESSION, session)
+}
+
+export async function loadUnsavedSession(): Promise<UnsavedSession | null> {
+  try {
+    const value = await get<UnsavedSession>(KEYS.UNSAVED_SESSION)
+    return value ?? null
+  } catch (error) {
+    console.error('Failed to load unsaved session:', error)
+    return null
+  }
+}
+
+export async function clearUnsavedSession(): Promise<void> {
+  await del(KEYS.UNSAVED_SESSION)
 }

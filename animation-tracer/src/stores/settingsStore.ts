@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import {
   saveSettingsData,
   loadSettingsData,
@@ -11,6 +11,8 @@ import {
   loadMobileMode,
   saveMobilePromptDismissed,
   loadMobilePromptDismissed,
+  saveAutosaveSettings,
+  loadAutosaveSettings,
   debounce
 } from '../services/persistenceService'
 
@@ -59,6 +61,21 @@ export const useSettingsStore = defineStore('settings', () => {
   const isMobileViewport = ref(false)
   const showMobileVideoOverlay = ref(false)
   
+  // Autosave settings
+  const autosaveEnabled = ref(true)
+  const autosaveInterval = ref(30) // seconds: 0 = instant, 5, 10, 15, 30, 60, 120
+  const autosaveOnboardingDismissed = ref(false)
+  const autosaveIntervalOptions = [
+    { value: 0, label: 'Instant' },
+    { value: 5, label: '5 seconds' },
+    { value: 10, label: '10 seconds' },
+    { value: 15, label: '15 seconds' },
+    { value: 30, label: '30 seconds' },
+    { value: 60, label: '1 minute' },
+    { value: 120, label: '2 minutes' }
+  ]
+  const lastAutosaveTime = ref<Date | null>(null)
+  
   // Canvas background color (for preview, not export)
   const canvasBackgroundColor = ref('#1a1a1a')
   
@@ -98,6 +115,15 @@ export const useSettingsStore = defineStore('settings', () => {
     })
   }, 300)
   
+  const debouncedSaveAutosave = debounce(() => {
+    if (!isLoaded.value) return
+    saveAutosaveSettings({
+      enabled: autosaveEnabled.value,
+      interval: autosaveInterval.value,
+      onboardingDismissed: autosaveOnboardingDismissed.value
+    })
+  }, 300)
+  
   // Auto-save watchers for settings
   watch([artistControls, smoothLineMode, smoothLineStrength, resizableSidebars, 
          leftSidebarWidth, rightSidebarWidth, uiScale], debouncedSaveSettings)
@@ -107,14 +133,30 @@ export const useSettingsStore = defineStore('settings', () => {
          onionSkinOpacityBefore, onionSkinOpacityAfter, onionSkinColorBefore,
          onionSkinColorAfter, onionSkinKeyframesOnly], debouncedSaveOnionSkin)
   
+  // Auto-save watchers for autosave settings
+  watch([autosaveEnabled, autosaveInterval], debouncedSaveAutosave)
+  
+  // Computed: formatted last autosave time
+  const lastAutosaveLabel = computed(() => {
+    if (!lastAutosaveTime.value) return ''
+    const seconds = Math.floor((Date.now() - lastAutosaveTime.value.getTime()) / 1000)
+    if (seconds < 5) return 'just now'
+    if (seconds < 60) return `${seconds}s ago`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ago`
+  })
+  
   // Initialize from storage
   async function initFromStorage() {
-    const [savedSettings, savedKeyMappings, savedOnionSkin, savedMobileMode, savedMobilePromptDismissed] = await Promise.all([
+    const [savedSettings, savedKeyMappings, savedOnionSkin, savedMobileMode, savedMobilePromptDismissed, savedAutosave] = await Promise.all([
       loadSettingsData(),
       loadKeyMappings(),
       loadOnionSkinSettings(),
       loadMobileMode(),
-      loadMobilePromptDismissed()
+      loadMobilePromptDismissed(),
+      loadAutosaveSettings()
     ])
     
     if (savedSettings) {
@@ -152,6 +194,15 @@ export const useSettingsStore = defineStore('settings', () => {
       isMobileMode.value = savedMobileMode
     }
     mobilePromptDismissed.value = savedMobilePromptDismissed
+    
+    // Load autosave settings
+    if (savedAutosave) {
+      autosaveEnabled.value = savedAutosave.enabled
+      autosaveInterval.value = savedAutosave.interval
+      if (savedAutosave.onboardingDismissed !== undefined) {
+        autosaveOnboardingDismissed.value = savedAutosave.onboardingDismissed
+      }
+    }
     
     isLoaded.value = true
   }
@@ -352,6 +403,24 @@ export const useSettingsStore = defineStore('settings', () => {
            !isMobileMode.value
   }
   
+  // Autosave setters
+  function setAutosaveEnabled(enabled: boolean) {
+    autosaveEnabled.value = enabled
+  }
+  
+  function dismissAutosaveOnboarding() {
+    autosaveOnboardingDismissed.value = true
+    debouncedSaveAutosave()
+  }
+  
+  function setAutosaveInterval(interval: number) {
+    autosaveInterval.value = interval
+  }
+  
+  function updateLastAutosaveTime() {
+    lastAutosaveTime.value = new Date()
+  }
+  
   return {
     remapMode,
     artistControls,
@@ -416,6 +485,17 @@ export const useSettingsStore = defineStore('settings', () => {
     dismissMobilePrompt,
     toggleMobileVideoOverlay,
     setCanvasBackgroundColor,
-    shouldShowMobilePrompt
+    shouldShowMobilePrompt,
+    // Autosave settings
+    autosaveEnabled,
+    autosaveInterval,
+    autosaveIntervalOptions,
+    lastAutosaveTime,
+    lastAutosaveLabel,
+    autosaveOnboardingDismissed,
+    setAutosaveEnabled,
+    setAutosaveInterval,
+    updateLastAutosaveTime,
+    dismissAutosaveOnboarding
   }
 })

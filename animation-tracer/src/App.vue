@@ -49,6 +49,58 @@
           {{ projectStore.autoSaveStatusText }}
         </span>
         
+        <!-- Autosave settings toggle with dropdown -->
+        <div v-if="videoStore.hasProject" class="autosave-settings" :class="{ open: showAutosaveDropdown }">
+          <button 
+            class="autosave-toggle"
+            @click="handleAutosaveToggleClick"
+            :class="{ enabled: settingsStore.autosaveEnabled }"
+            title="Autosave settings"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            <span class="autosave-label">{{ settingsStore.autosaveEnabled ? settingsStore.autosaveIntervalOptions.find(o => o.value === settingsStore.autosaveInterval)?.label || 'On' : 'Off' }}</span>
+            <svg class="dropdown-arrow" :class="{ rotated: showAutosaveDropdown }" xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          
+          <!-- Autosave onboarding tooltip -->
+          <div 
+            v-if="videoStore.hasProject && !settingsStore.autosaveOnboardingDismissed && !showAutosaveDropdown" 
+            class="autosave-onboarding"
+          >
+            <div class="onboarding-arrow"></div>
+            <div class="onboarding-content">
+              <span class="onboarding-text">Configure auto-save</span>
+              <button class="onboarding-dismiss" @click.stop="settingsStore.dismissAutosaveOnboarding()">×</button>
+            </div>
+          </div>
+          
+          <div v-if="showAutosaveDropdown" class="autosave-dropdown" @click.stop>
+            <div class="autosave-options">
+              <button 
+                class="autosave-option"
+                :class="{ active: !settingsStore.autosaveEnabled }"
+                @click="settingsStore.setAutosaveEnabled(false)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                Off
+              </button>
+              <button 
+                v-for="opt in settingsStore.autosaveIntervalOptions" 
+                :key="opt.value"
+                class="autosave-option"
+                :class="{ active: settingsStore.autosaveEnabled && settingsStore.autosaveInterval === opt.value }"
+                @click="selectAutosaveInterval(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+            <div v-if="settingsStore.lastAutosaveLabel" class="autosave-last-saved">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              {{ settingsStore.lastAutosaveLabel }}
+            </div>
+          </div>
+        </div>
+        
         <!-- Format selector with help tooltip -->
         <div 
           v-if="videoStore.hasProject && videoStore.hasVideo"
@@ -251,6 +303,30 @@
   
   <!-- Mobile Mode Detection Dialog -->
   <MobileModeDialog />
+  
+  <!-- Session Recovery Dialog -->
+  <Teleport to="body">
+    <div v-if="showRecoveryDialog" class="recovery-dialog-overlay" @click.self="dismissRecovery">
+      <div class="recovery-dialog">
+        <div class="recovery-dialog-header">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          <h3>Recover Unsaved Work?</h3>
+        </div>
+        <p class="recovery-dialog-message">
+          We found an autosaved session from 
+          <strong v-if="recoverySessionInfo">{{ formatRecoveryTime(recoverySessionInfo.timestamp) }}</strong>
+          for project <strong v-if="recoverySessionInfo">"{{ recoverySessionInfo.projectName }}"</strong>.
+        </p>
+        <p class="recovery-dialog-hint">
+          Would you like to continue where you left off?
+        </p>
+        <div class="recovery-dialog-actions">
+          <button class="recovery-btn dismiss" @click="dismissRecovery">Discard</button>
+          <button class="recovery-btn recover" @click="recoverSession">Recover Session</button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -282,6 +358,9 @@ const showVideo = ref(true)
 const videoOpacity = ref(50)
 const showCropPanel = ref(false)
 const activeTab = ref<'export' | 'settings'>('export')
+const showAutosaveDropdown = ref(false)
+const showRecoveryDialog = ref(false)
+const recoverySessionInfo = ref<{ timestamp: number; projectName: string } | null>(null)
 
 // Sidebar scale based on width, combined with UI scale
 // Scale increases gradually as width increases (no max limit)
@@ -373,6 +452,30 @@ function closeProject() {
   drawingStore.resetViewport()
   // Hide crop panel if open
   showCropPanel.value = false
+  // Close autosave dropdown if open
+  showAutosaveDropdown.value = false
+}
+
+// Close autosave dropdown when clicking outside
+function handleGlobalClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (!target.closest('.autosave-settings')) {
+    showAutosaveDropdown.value = false
+  }
+}
+
+// Handle autosave toggle click - dismiss onboarding when opening
+function handleAutosaveToggleClick() {
+  if (!settingsStore.autosaveOnboardingDismissed) {
+    settingsStore.dismissAutosaveOnboarding()
+  }
+  showAutosaveDropdown.value = !showAutosaveDropdown.value
+}
+
+// Select autosave interval and enable autosave
+function selectAutosaveInterval(value: number) {
+  settingsStore.setAutosaveInterval(value)
+  settingsStore.setAutosaveEnabled(true)
 }
 
 function fitToScreen() {
@@ -484,6 +587,35 @@ function executeAction(action: string, withModifier: boolean = false) {
   }
 }
 
+// Session recovery handlers
+async function recoverSession() {
+  showRecoveryDialog.value = false
+  recoverySessionInfo.value = null
+  // The drawing data is already in IndexedDB from the last session
+  // Just clear the recovery flag so it doesn't show again
+  await projectStore.clearUnsavedSessionFlag()
+}
+
+async function dismissRecovery() {
+  showRecoveryDialog.value = false
+  recoverySessionInfo.value = null
+  // Clear the recovery flag and optionally clear stored data
+  await projectStore.clearUnsavedSessionFlag()
+}
+
+function formatRecoveryTime(timestamp: number): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now.getTime() - timestamp
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 // Register global key handler
 onMounted(async () => {
   // Initialize stores from IndexedDB
@@ -493,17 +625,29 @@ onMounted(async () => {
     videoStore.initFromStorage()
   ])
   
+  // Check for unsaved session recovery
+  const session = await projectStore.checkForUnsavedSession()
+  if (session.hasSession && session.timestamp && session.projectName) {
+    recoverySessionInfo.value = {
+      timestamp: session.timestamp,
+      projectName: session.projectName
+    }
+    showRecoveryDialog.value = true
+  }
+  
   // Mobile detection
   detectMobileDevice()
   checkMobileViewport()
   window.addEventListener('resize', checkMobileViewport)
   
   window.addEventListener('keydown', handleGlobalKeydown)
+  document.addEventListener('click', handleGlobalClick)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('resize', checkMobileViewport)
+  document.removeEventListener('click', handleGlobalClick)
 })
 
 // Mobile detection functions
@@ -663,6 +807,191 @@ function checkMobileViewport() {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Autosave settings dropdown */
+.autosave-settings {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.autosave-toggle {
+  display: flex;
+  align-items: center;
+  gap: calc(4px * var(--ui-scale, 1));
+  padding: calc(4px * var(--ui-scale, 1)) calc(8px * var(--ui-scale, 1));
+  background: rgba(255, 255, 255, 0.05);
+  border: none;
+  border-radius: calc(4px * var(--ui-scale, 1));
+  color: #888;
+  font-size: calc(11px * var(--ui-scale, 1));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.autosave-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.autosave-toggle.enabled {
+  color: #4ade80;
+}
+
+.autosave-toggle .autosave-label {
+  font-size: calc(10px * var(--ui-scale, 1));
+}
+
+.autosave-toggle svg {
+  flex-shrink: 0;
+}
+
+.autosave-toggle .dropdown-arrow {
+  transition: transform 0.2s ease;
+}
+
+.autosave-toggle .dropdown-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+.autosave-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: calc(4px * var(--ui-scale, 1));
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: calc(8px * var(--ui-scale, 1));
+  padding: calc(8px * var(--ui-scale, 1));
+  min-width: calc(140px * var(--ui-scale, 1));
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.autosave-options {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2px * var(--ui-scale, 1));
+}
+
+.autosave-option {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--ui-scale, 1));
+  padding: calc(8px * var(--ui-scale, 1)) calc(12px * var(--ui-scale, 1));
+  background: transparent;
+  border: none;
+  border-radius: calc(6px * var(--ui-scale, 1));
+  color: #888;
+  font-size: calc(12px * var(--ui-scale, 1));
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.autosave-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.autosave-option.active {
+  background: rgba(74, 222, 128, 0.15);
+  color: #4ade80;
+}
+
+.autosave-option svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.autosave-last-saved {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6px * var(--ui-scale, 1));
+  font-size: calc(10px * var(--ui-scale, 1));
+  color: #555;
+  padding-top: calc(8px * var(--ui-scale, 1));
+  margin-top: calc(6px * var(--ui-scale, 1));
+  border-top: 1px solid #333;
+}
+
+.autosave-last-saved svg {
+  opacity: 0.5;
+}
+
+/* Autosave onboarding tooltip */
+.autosave-onboarding {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  animation: onboarding-fade 0.3s ease-out;
+}
+
+.onboarding-arrow {
+  position: absolute;
+  top: -5px;
+  right: 20px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 5px solid #3a3a3a;
+}
+
+.onboarding-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #3a3a3a;
+  color: #ccc;
+  padding: 8px 10px 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  border: 1px solid #4a4a4a;
+}
+
+.onboarding-text {
+  letter-spacing: 0.2px;
+}
+
+.onboarding-dismiss {
+  background: transparent;
+  border: none;
+  color: #666;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 2px;
+  transition: color 0.15s ease;
+  border-radius: 3px;
+}
+
+.onboarding-dismiss:hover {
+  color: #aaa;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes onboarding-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Format selector dropdown */
@@ -1202,5 +1531,100 @@ function checkMobileViewport() {
 .reset-crop:hover {
   background: #333;
   color: #fff;
+}
+
+/* Session Recovery Dialog */
+.recovery-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.recovery-dialog {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.recovery-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.recovery-dialog-header svg {
+  color: #4ade80;
+  flex-shrink: 0;
+}
+
+.recovery-dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.recovery-dialog-message {
+  color: #aaa;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 8px 0;
+}
+
+.recovery-dialog-message strong {
+  color: #fff;
+}
+
+.recovery-dialog-hint {
+  color: #888;
+  font-size: 13px;
+  margin: 0 0 20px 0;
+}
+
+.recovery-dialog-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.recovery-btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.recovery-btn.dismiss {
+  background: #333;
+  color: #888;
+}
+
+.recovery-btn.dismiss:hover {
+  background: #444;
+  color: #fff;
+}
+
+.recovery-btn.recover {
+  background: #4ade80;
+  color: #000;
+}
+
+.recovery-btn.recover:hover {
+  background: #22c55e;
 }
 </style>
