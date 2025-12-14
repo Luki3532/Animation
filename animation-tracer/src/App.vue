@@ -111,6 +111,20 @@
         {{ projectStore.lastToastMessage }}
       </div>
     </Transition>
+
+    <!-- Saving overlay (shows during .fluf saves with embedded video) -->
+    <Transition name="fade">
+      <div v-if="projectStore.isSaving && projectStore.projectFormat === 'fluf'" class="saving-overlay">
+        <div class="saving-dialog">
+          <div class="saving-spinner"></div>
+          <div class="saving-text">Saving with embedded video...</div>
+          <div class="saving-subtext">This may take a moment for large videos</div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Version display -->
+    <div class="version-badge">dist-q25-beta-0.60.40</div>
     
     <!-- Checkpoint Panel -->
     <CheckpointPanel v-if="projectStore.showCheckpointPanel" />
@@ -807,6 +821,81 @@ function checkMobileViewport() {
 .toast-leave-to {
   opacity: 0;
   transform: translateX(-50%) translateY(-10px);
+}
+
+/* Saving overlay */
+.saving-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.saving-dialog {
+  background: #1e1e1e;
+  border: 1px solid #3a5a3a;
+  border-radius: 8px;
+  padding: 24px 32px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.saving-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #333;
+  border-top-color: #4ade80;
+  border-radius: 50%;
+  margin: 0 auto 16px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.saving-text {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.saving-subtext {
+  color: #888;
+  font-size: 12px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* Version badge */
+.version-badge {
+  position: fixed;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #666;
+  font-size: 10px;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 3px;
+  z-index: 100;
+  pointer-events: none;
+  user-select: none;
 }
 
 .header-nav {
