@@ -166,7 +166,7 @@
 
     <!-- Saving overlay (shows during .fluf saves with embedded video) -->
     <Transition name="fade">
-      <div v-if="projectStore.isSaving && projectStore.projectFormat === 'fluf'" class="saving-overlay">
+      <div v-if="projectStore.isSaving && projectStore.currentFormat === 'fluf'" class="saving-overlay">
         <div class="saving-dialog">
           <div class="saving-spinner"></div>
           <div class="saving-text">Saving with embedded video...</div>
