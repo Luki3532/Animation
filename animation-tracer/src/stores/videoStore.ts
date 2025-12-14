@@ -314,7 +314,7 @@ export const useVideoStore = defineStore('video', () => {
   }
 
   // Remove frames starting from a specific index (empty projects only)
-  function removeFrames(startIndex: number, count: number): boolean {
+  function removeFrames(_startIndex: number, count: number): boolean {
     if (!state.value.isEmptyProject || count <= 0) return false
     // Ensure we leave at least 1 frame
     const maxRemovable = state.value.frameCount - 1

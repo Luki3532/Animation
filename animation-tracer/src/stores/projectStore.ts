@@ -58,7 +58,8 @@ export const useProjectStore = defineStore('project', () => {
     }, 10000) // Update every 10 seconds
   }
   
-  // Stop the save timer tick
+  // Stop the save timer tick - currently unused but kept for future use
+  // @ts-ignore - Function reserved for future use
   function stopSaveTimerTick() {
     if (saveTimerInterval) {
       clearInterval(saveTimerInterval)
@@ -103,7 +104,7 @@ export const useProjectStore = defineStore('project', () => {
   const autoSaveStatusText = computed(() => {
     // Include saveTimerTick to force re-evaluation every 10 seconds
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _tick = saveTimerTick.value
+    // const _tick = saveTimerTick.value // Unused
     
     // DEBUG logging
     console.log('[AutoSave Debug] Status:', autoSaveStatus.value, 'hasFileHandle:', hasFileHandle.value, 'autosaveEnabled:', settingsStore.autosaveEnabled, 'supportsAPI:', ProjectService.supportsFileSystemAccess())

@@ -185,7 +185,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Plus, Minus, PlusCircle, ArrowRightCircle, Trash2, MinusCircle, Copy, ClipboardPaste } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, Plus, Minus, PlusCircle, ArrowRightCircle, MinusCircle, Copy, ClipboardPaste } from 'lucide-vue-next'
 import { useVideoStore } from '../stores/videoStore'
 import { useDrawingStore } from '../stores/drawingStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -198,11 +198,11 @@ const settingsStore = useSettingsStore()
 const showAddFramesDialog = ref(false)
 const showInsertFramesDialog = ref(false)
 const showRemoveFramesDialog = ref(false)
-const showCopyDrawingDialog = ref(false)
+// const showCopyDrawingDialog = ref(false) // Unused
 const addFrameCount = ref(12)
 const insertFrameCount = ref(1)
 const removeFrameCount = ref(1)
-const copyToFrameNumber = ref(1)
+// const copyToFrameNumber = ref(1) // Unused
 
 // Clipboard for copying drawings between frames
 const clipboardDrawing = ref<{ fabricJSON: string; thumbnail: string } | null>(null)
