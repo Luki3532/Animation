@@ -105,6 +105,14 @@ export const useProjectStore = defineStore('project', () => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _tick = saveTimerTick.value
     
+    // DEBUG logging
+    console.log('[AutoSave Debug] Status:', autoSaveStatus.value, 'hasFileHandle:', hasFileHandle.value, 'autosaveEnabled:', settingsStore.autosaveEnabled, 'supportsAPI:', ProjectService.supportsFileSystemAccess())
+    
+    // Check if File System Access API is supported
+    if (!ProjectService.supportsFileSystemAccess()) {
+      return 'Manual save only'
+    }
+    
     switch (autoSaveStatus.value) {
       case 'saving': return 'Saving...'
       case 'saved': return lastAutoSave.value 
@@ -214,6 +222,7 @@ export const useProjectStore = defineStore('project', () => {
     const handle = await ProjectService.pickSaveLocation(name.replace(/[^a-z0-9_\-]/gi, '_'))
     
     if (handle) {
+      console.log('[AutoSave Debug] pickSaveLocation got handle, setting hasFileHandle=true')
       hasFileHandle.value = true
       projectName.value = handle.name.replace('.lucas', '')
       projectPath.value = handle.name
@@ -233,14 +242,12 @@ export const useProjectStore = defineStore('project', () => {
   
   // Start auto-save timer based on settings
   function startAutoSaveTimer() {
-    const settingsStore = useSettingsStore()
     stopAutoSaveTimer()
     
-    // Don't start if autosave is disabled
-    if (!settingsStore.autosaveEnabled) return
+    // Don't start timer if autosave is disabled or instant mode (instant is handled by markDirty)
+    if (!settingsStore.autosaveEnabled || settingsStore.autosaveInterval === 0) return
     
-    // Instant autosave (interval = 0) uses 1 second debounce
-    const interval = settingsStore.autosaveInterval === 0 ? 1000 : settingsStore.autosaveInterval * 1000
+    const interval = settingsStore.autosaveInterval * 1000
     
     autoSaveTimer.value = window.setInterval(() => {
       if (isDirty.value && hasFileHandle.value && settingsStore.autosaveEnabled) {
@@ -259,12 +266,13 @@ export const useProjectStore = defineStore('project', () => {
   
   // Perform auto-save
   async function performAutoSave(): Promise<boolean> {
+    console.log('[AutoSave Debug] performAutoSave called, hasFileHandle:', hasFileHandle.value)
     if (!hasFileHandle.value) return false
     
     const drawingStore = useDrawingStore()
     const videoStore = useVideoStore()
-    const settingsStore = useSettingsStore()
     
+    console.log('[AutoSave Debug] Setting status to saving')
     autoSaveStatus.value = 'saving'
     
     try {
@@ -287,6 +295,7 @@ export const useProjectStore = defineStore('project', () => {
       const success = await ProjectService.saveToHandle(blob)
       
       if (success) {
+        console.log('[AutoSave Debug] Save successful, setting status to saved')
         isDirty.value = false
         lastAutoSave.value = new Date()
         settingsStore.updateLastAutosaveTime()
@@ -320,6 +329,26 @@ export const useProjectStore = defineStore('project', () => {
       timestamp: Date.now(),
       projectName: projectName.value
     })
+    
+    // For instant autosave (interval = 0), trigger save immediately
+    if (hasFileHandle.value && settingsStore.autosaveEnabled && settingsStore.autosaveInterval === 0) {
+      triggerInstantSave()
+    }
+  }
+  
+  // Debounced instant save to prevent rapid consecutive saves
+  let instantSaveTimeout: number | null = null
+  function triggerInstantSave() {
+    if (instantSaveTimeout) {
+      clearTimeout(instantSaveTimeout)
+    }
+    // Small debounce (300ms) to batch rapid changes like brush strokes
+    instantSaveTimeout = window.setTimeout(async () => {
+      instantSaveTimeout = null
+      if (isDirty.value && hasFileHandle.value && settingsStore.autosaveEnabled) {
+        await performAutoSave()
+      }
+    }, 300)
   }
   
   // Create a new checkpoint
@@ -940,9 +969,7 @@ export const useProjectStore = defineStore('project', () => {
   }
   
   // Watch for autosave setting changes and restart timer
-  // Note: This will be called after settingsStore is initialized
   function setupAutosaveWatcher() {
-    const settingsStore = useSettingsStore()
     watch(
       () => [settingsStore.autosaveEnabled, settingsStore.autosaveInterval],
       () => {
